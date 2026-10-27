@@ -1,0 +1,9 @@
+# Einheitliche Zeilenenden fuer plattformuebergreifende Quelldateien.
+* text=auto eol=lf
+
+# Bilder unveraendert als Binaerdateien behandeln.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary

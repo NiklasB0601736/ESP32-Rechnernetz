@@ -1,116 +1,109 @@
-# ESP-NOW Funklabor
+# ESP32-Rechnernetz
 
-Experimentelle Plattform für das Hochschulfach Rechnernetze. Zwei **ESP32-WROOM-32** tauschen lokal erzeugte Testpakete aus. Der Master verbindet das Funknetz per USB/UART mit einem PC; FastAPI und die komplette Weboberfläche laufen ausschließlich auf dem PC.
+Ein ESP-NOW-Funklabor für ein Hochschulprojekt im Fach **Rechnernetze**. Zwei **ESP32-WROOM-32** tauschen Testdaten aus. Über eine lokale Weboberfläche lassen sich Sendeleistung und PHY-Profil einstellen und die Kommunikationsqualität beider Funkrichtungen untersuchen.
 
-**Stand:** Firmware und Software sind implementiert. Simulation, automatisierte Auswertung und Browserbedienung sind prüfbar. Ein Hardware-Abnahmeversuch mit zwei geflashten Boards steht aus. Details und konkrete Prüfergebnisse: [docs/VALIDATION.md](docs/VALIDATION.md).
+**Projektstand:** Firmware, PC-Backend und Browseroberfläche sind implementiert. Beide Firmware-Rollen wurden erfolgreich kompiliert; Softwaretests und simulierte Browserabläufe wurden geprüft. **Der reale Funkversuch mit zwei gekoppelten Boards steht noch aus.** Einzelheiten stehen im [Prüfbericht](docs/VALIDATION.md).
+
+## Aufbau
 
 ```text
-Browser ← HTTP / WebSocket → Python / FastAPI ← USB / UART → Master
-                                                            ⇅ ESP-NOW
-                                                           Slave
+Browser
+   │ HTTP / WebSocket
+PC: FastAPI-Backend
+   │ USB / UART
+Master-ESP32  ←── ESP-NOW ──→  Slave-ESP32
 ```
 
-## Sofort ohne Hardware starten
+Backend und Weboberfläche laufen auf dem PC. Im Betrieb braucht nur der Master eine Datenverbindung zum PC; der Slave benötigt eine Stromversorgung. Der erste Meilenstein verwendet genau zwei Geräte. Knotenverwaltung und Darstellung sind für eine spätere Erweiterung vorbereitet; Routing und Mehrsprungkommunikation folgen in späteren Schritten.
 
-Python 3.11–3.13, im Projektverzeichnis:
+## Funktionen
+
+- Grafische Netzansicht und Geräteliste mit IDs, MAC-Adressen, Rollen und Onlinezustand.
+- Unabhängige maximale Sendeleistung je Gerät und gemeinsames, unterstütztes PHY-Profil.
+- Bestätigte Konfigurationsänderungen mit zeitgesteuerter Rückkehr bei ausbleibender Bestätigung.
+- Startbare und stoppbare Versuche in beiden Richtungen mit einstellbarer Paketgröße, Senderate und Dauer.
+- Live-Auswertung von Goodput, Paketzustellung, Paketverlust, RTT, RTT-Jitter und RSSI.
+- Radar-Chart, Zeitverläufe und JSON-Export der Versuche.
+- Ausdrücklich gekennzeichnete Simulation für den Betrieb ohne ESP32-Hardware.
+
+**BER wird als „nicht messbar“ angezeigt.** Die genutzte ESP-NOW-Schnittstelle liefert keine vollständige Funk-BER. Paketverlust wird separat ausgewertet. Angezeigte Sendeleistungen sind bestätigte Konfigurationsobergrenzen, keine Messung der abgestrahlten Leistung.
+
+## Schnellstart ohne Hardware
+
+Voraussetzungen: **Python 3.11–3.13** und Git. In PowerShell:
 
 ```powershell
+git clone https://github.com/NiklasB0601736/ESP32-Rechnernetz.git
+cd ESP32-Rechnernetz
+
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe -m backend.app --demo
 ```
 
-Dann **http://127.0.0.1:8000** öffnen. Sind die Abhängigkeiten bereits vorhanden, reicht `python -m backend.app --demo`. Der orange Hinweis kennzeichnet synthetische Daten. Chart.js 4.4.8 samt MIT-Lizenz liegt lokal im Projekt; der Browser braucht kein Internet. Beenden mit `Strg+C`.
+Anschließend **<http://127.0.0.1:8000>** im Browser öffnen. Der Hinweis „Simulation aktiv“ kennzeichnet synthetische Daten. Mit `Strg+C` wird das Backend beendet.
 
-Die Oberfläche zeigt Netzansicht und Geräte, getrennte Sendeleistungsobergrenzen, gemeinsames PHY-Profil, Versuchseinstellungen, Rohwerte, Radar-Chart, drei Zeitverläufe und ein Ereignisprotokoll. Abgeschlossene Versuche werden unter `data/tests/` als JSON archiviert und sind über den Browser exportierbar.
+Chart.js liegt mit seiner Lizenz im Repository. Die Weboberfläche benötigt nach der Einrichtung keine Internetverbindung. Messdaten werden lokal unter `data/tests/` gespeichert.
 
-## Firmware bauen und flashen
+<details>
+<summary>Dashboard-Vorschau im Simulationsmodus</summary>
 
-Ziel ist ausschließlich `esp32` / WROOM-32. **ESP-IDF v6.0.1** ist fest vorgegeben; andere Chips oder IDF-Versionen werden absichtlich beim Build abgelehnt. Diese Wahl nutzt die vorhandene Installation `C:\esp\v6.0.1\esp-idf` und die zugehörigen Werkzeuge unter `C:\Espressif`. cJSON `1.7.19~2` wird beim ersten Build durch den IDF Component Manager bezogen; danach ist die Komponente lokal verfügbar.
+![Dashboard mit Netzansicht, Versuchseinstellungen und Messdiagrammen im Simulationsmodus](docs/images/dashboard.png)
 
-Die zwei Boards brauchen unterschiedliche Knoten-IDs und die **STA-MAC-Adresse des jeweils anderen Boards**. Es gibt keine automatische Kopplung. Die Firmware akzeptiert ausschließlich diese freigegebene MAC-/ID-Kombination.
+</details>
 
-1. STA-MACs zunächst aus vorhandenen Geräteinformationen oder mit `esptool --port COM6 read-mac` in der ESP-IDF-Shell ermitteln. Alternativ lässt sich die Firmware mit der Standard-Peer-MAC `00:00:00:00:00:00` zum Auslesen der eigenen MAC starten: Sie meldet diese seriell und sendet dabei keine Funkpakete an einen Peer. Die Standard-Builds sind deshalb **noch nicht miteinander gekoppelt**.
-2. Master konfigurieren: Rolle Master, lokale ID 1, Peer-ID 2, Peer-MAC des Slaves, Kanal 6. Slave konfigurieren: Master-Option deaktiviert, lokale ID 2, Peer-ID 1, Peer-MAC des Masters, ebenfalls Kanal 6. Einstellungen liegen unter **Funklabor** in `menuconfig`.
-3. Beide Rollen bauen und jeweils auf das richtige Board flashen. Der Slave benötigt anschließend nur Strom, keine PC-Datenverbindung.
+## Betrieb mit zwei ESP32
 
-Für die auf diesem PC gefundene EIM-Installation, aus dem Projektverzeichnis:
+Benötigt werden zwei ESP32-WROOM-32, USB-Kabel bzw. Stromversorgung und **ESP-IDF 6.0.1**. Die Firmware ist auf diese Chip- und IDF-Version abgestimmt.
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\idf.ps1 -Role master -Action menuconfig
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\idf.ps1 -Role master -Action build
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\idf.ps1 -Role master -Action flash -Port COM6
+1. Die STA-MAC-Adresse beider Boards ermitteln.
+2. Master und Slave getrennt in `menuconfig` konfigurieren. Beide verwenden denselben Kanal und die jeweilige Gegenstelle als freigegebenen Peer.
+3. Beide Rollen bauen und auf das passende Board flashen.
+4. Den Master mit dem PC verbinden und das Backend mit dessen seriellem Port starten.
 
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\idf.ps1 -Role slave -Action menuconfig
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\idf.ps1 -Role slave -Action build
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\idf.ps1 -Role slave -Action flash -Port COM7
-```
+| Einstellung | Master | Slave |
+|---|---|---|
+| Master-Rolle | Aktiviert | Deaktiviert |
+| Knoten-ID | `1` | `2` |
+| Peer-ID | `2` | `1` |
+| Peer-MAC | STA-MAC des Slaves | STA-MAC des Masters |
+| WLAN-Kanal | `6` | `6` |
 
-`COM6` und `COM7` sind Beispiele: den jeweiligen Board-Port einsetzen. Das Skript flasht ausschließlich mit `-Action flash`; `build` schreibt keine Geräte. `-IdfPath` und `-ToolsPath` erlauben andere Installationspfade. `-Action monitor -Port COM6` öffnet den seriellen Monitor; vor dem Backendstart schließen. Das Skript setzt die Ausführungsrichtlinie nur für seinen Prozess und ändert keine systemweite Richtlinie. Bei EIM-Installationen ohne ältere Constraints-Datei verwendet es die bereits installierte versionsgebundene Python-Umgebung.
-
-Alternativ in einer **aktivierten ESP-IDF-6.0.1-Shell**, im Ordner `firmware`:
-
-```powershell
-idf.py -B build-master -D SDKCONFIG=sdkconfig.master -D SDKCONFIG_DEFAULTS=sdkconfig.defaults menuconfig
-idf.py -B build-master -D SDKCONFIG=sdkconfig.master build
-idf.py -B build-master -D SDKCONFIG=sdkconfig.master -p COM6 flash
-
-idf.py -B build-slave -D SDKCONFIG=sdkconfig.slave -D 'SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.slave.defaults' menuconfig
-idf.py -B build-slave -D SDKCONFIG=sdkconfig.slave build
-idf.py -B build-slave -D SDKCONFIG=sdkconfig.slave -p COM7 flash
-```
-
-Die getrennten Build- und Konfigurationsdateien verhindern, dass beim Rollenwechsel versehentlich derselbe Build verwendet wird. `sdkconfig.*` speichert die lokalen Peer-MACs und wird nicht versioniert.
-
-## Hardwarebetrieb und erster Versuch
+Für den Backendstart, beispielsweise mit `COM6`:
 
 ```powershell
-python -m backend.app --port COM6
+.\.venv\Scripts\python.exe -m backend.app --port COM6
 ```
 
-Oder `python -m backend.app` starten und den Master-Port im Browser auswählen. Baudrate: **115200, 8N1**. Das Backend versucht beim Öffnen, DTR/RTS deaktiviert zu halten; manche USB-Bridges können trotzdem einen Reset auslösen. Keine andere Anwendung darf denselben Port geöffnet halten. Auf diesem PC wurde ein CP210x-Gerät auf COM6 erkannt; dessen Firmware und Boardidentität wurden nicht abgefragt.
+Den tatsächlich verwendeten Master-Port einsetzen. Alternativ das Backend ohne `--port` starten und den Port im Browser auswählen. Die serielle Verbindung verwendet **115200 Baud, 8N1**.
 
-1. Beide Boards zunächst bei guter Funkverbindung einschalten. Nach etwa drei Sekunden müssen beide im Browser online erscheinen: unterschiedliche IDs/MACs, Kanal 6 / 2437 MHz, Bandbreite 20 MHz und Profil `ofdm6`. Ohne gültige Peer-MACs erscheint nur der Master.
-2. Master → Slave, 128 Byte, 50 Pakete/s, 20 Sekunden starten. Nach Sendeende folgen Drain-/Berichtszeiten; auf „Abgeschlossen“ warten. Prüfen: TX, eindeutige Ziel-RX, MAC-Status, Anwendungsantworten, plausibler Goodput und RSSI.
-3. Slave → Master mit identischen Einstellungen wiederholen. RSSI gehört jeweils zum Datenempfang am Ziel; RTT umfasst Hin- und Rückrichtung.
-4. Sendeleistung **nur eines** Knotens auf z. B. 11 dBm setzen. Ausstehende Änderung, Rückbestätigung und unabhängigen Wert des anderen Knotens prüfen. Beide Richtungen erneut untersuchen.
-5. Gemeinsames Profil wechseln; nur die Schnittmenge der von beiden Geräten bestätigten Profile ist auswählbar. Erst nach Bestätigung testen.
-6. Einen längeren Versuch vorzeitig stoppen. Die Auswertung muss die tatsächliche Sendedauer verwenden und die Abschlussberichte abwarten.
-7. Für einen kontrollierten Ausfallversuch den Slave vorübergehend stromlos machen: Offline nach 4 s; fehlende Zielberichte ergeben **keinen erfundenen Paketverlust**. Bei einer unbestätigten Konfigurationsänderung stellt die Firmware nach 15 s die vorherige Einstellung wieder her. Details zu Teilbestätigungen stehen in [docs/PROTOCOLS.md](docs/PROTOCOLS.md).
-8. Ergebnisse exportieren. Abstand, Umgebung, Antennenausrichtung, USB-Stromversorgung und eventuelle Queue-Verluste zum Versuch notieren. Geringere Sendeleistung reduziert das Linkbudget und erzeugt kein zusätzliches Störsignal.
+**Die Standardkonfiguration enthält noch keine gültigen Peer-MACs.** Die vollständigen Befehle für `menuconfig`, Build, Flashen und den ersten Hardwaretest stehen in der [Einrichtungsanleitung](docs/SETUP.md).
 
-Für jedes PHY-Profil zuerst eine kurze Funktionsprüfung durchführen. Eine vom Treiber angenommene Rate bestätigt die Konfiguration; die tatsächlich ausgesendete PHY-Rate lässt sich erst mit unabhängiger Funkaufzeichnung verifizieren. Die Soll-Senderate ist keine garantierte Rate: MAC-Wartezeiten, Messantworten und Statusverkehr können die erreichte Rate reduzieren.
+## Projektstruktur
 
-## Tests und Aufbau
-
-```powershell
-python -m pip install -r requirements-dev.txt
-python -m unittest discover -s tests -v
-# Optional: tatsächliches Firmware-Messmodul auf dem PC ausführen
-python scripts/test_firmware_metrics.py
-# Bei laufender Demo und installiertem Chrome:
-python scripts/browser_smoke.py
-```
-
-Der Browser-Test steuert Leistung, gemeinsames Profil und beide Testrichtungen über die tatsächlichen Formulare. Er prüft die vier Diagramme und eine mobile Ansicht; Nachweise liegen unter `data/verification/`. Der optionale native C-Test verwendet standardmäßig das hier vorhandene Clang/LLD aus MATLAB, startet MATLAB aber nicht. Über `--clang-dir` lässt sich ein anderer Host-Clang angeben. Er führt die unveränderte `metrics.c` als PC-Bibliothek aus; das ersetzt keinen ESP32-Laufzeittest.
-
-| Ordner | Aufgabe |
+| Pfad | Inhalt |
 |---|---|
-| `firmware/main/radio.*` | ESP-NOW, MAC-Freigabe, Empfangsmetadaten, Treiberfähigkeiten |
-| `firmware/main/metrics.*` | Messfenster, Sequenz-Bitmaps, Duplikate, RTT, Jitter |
-| `firmware/main/gateway.*` | JSON-Zeilen über UART, binäre Steuerbefehle |
-| `firmware/main/main.c` | Rollen, Konfigurationslease, Steuerung und Aggregation |
-| `backend/` | FastAPI, serieller Transport, Transaktionen, Auswertung, Archiv, Simulation |
-| `frontend/` | Browseroberfläche und lokal eingebundenes Chart.js |
-| `tests/` | Auswertungs-, API-, Steuerungs- und Simulationstests |
-| `docs/` | Protokolle, Messmethodik, geprüfter Stand |
+| [`firmware/`](firmware/) | ESP-IDF-Firmware, Rollen und gemeinsame Konfigurationsvorlagen |
+| [`backend/`](backend/) | FastAPI, serielles Gateway, Simulation und Messauswertung |
+| [`frontend/`](frontend/) | Browseroberfläche und lokal eingebundene Diagrammbibliothek |
+| [`tests/`](tests/) | Tests der Auswertung, Schnittstellen und Steuerung; C-Test für das Messmodul |
+| [`scripts/`](scripts/) | ESP-IDF-Aufrufe, Browserprüfung und nativer Firmware-Messmodultest |
+| [`docs/`](docs/) | Einrichtung, Protokolle, Messmethodik und Prüfstand |
 
-Backend und UI verwalten Knoten nach ID und freigegebene Kanten als Daten. Die Firmware hat in diesem Meilenstein genau einen konfigurierten direkten Peer. Für fünf Knoten lässt sich der Radioadapter auf eine Peer-Tabelle erweitern; Weiterleitung, Routing, Pfadwahl und Mesh-Discovery sind bewusst noch nicht implementiert. Pro Gateway läuft jeweils ein gerichteter Versuch.
+ESP-Bibliotheken, SDK-Caches, Build-Verzeichnisse, lokale Board-Konfigurationen und Messdaten werden durch [`.gitignore`](.gitignore) ausgeschlossen. Die Firmware-Abhängigkeit cJSON wird beim ersten Build über den ESP-IDF Component Manager bezogen. Manifest und Lockdatei sind versioniert.
 
-Die lokale Anwendung bindet standardmäßig ausschließlich an `127.0.0.1`. Messdaten bleiben auf dem PC. Die erste Funkversion verwendet unverschlüsseltes Unicast mit MAC-/ID-Freigabe; kryptografische Authentifizierung und Mehrbenutzerbetrieb sind keine Funktionen dieses Laboraufbaus.
+## Tests
 
-## Technische Referenzen
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
 
-Chip und PHY-API: [ESP32 Wi-Fi API, ESP-IDF 6.0.1](https://docs.espressif.com/projects/esp-idf/en/v6.0.1/esp32/api-reference/network/esp_wifi.html), [ESP-NOW API, ESP-IDF 6.0.1](https://docs.espressif.com/projects/esp-idf/en/v6.0.1/esp32/api-reference/network/esp_now.html), [zugehöriger ESP-NOW-Header](https://github.com/espressif/esp-idf/blob/v6.0.1/components/esp_wifi/include/esp_now.h). Tabellen und Einschränkungen: [docs/MEASUREMENT.md](docs/MEASUREMENT.md).
-#   E S P 3 2 - R e c h n e r n e t z  
- 
+Der dokumentierte Prüfstand umfasst **20 erfolgreiche Softwaretests**, erfolgreiche Builds für Master und Slave, einen PC-Lauf des tatsächlichen C-Messmoduls sowie Browserprüfungen einschließlich Mobilansicht. Für optionale Browser- und native C-Tests siehe [Einrichtungsanleitung](docs/SETUP.md#tests-und-aufbau).
+
+## Dokumentation
+
+- [Einrichtung, Build, Flashen und erster Hardwaretest](docs/SETUP.md)
+- [Messmethodik, PHY-Profile und Diagrammnormalisierung](docs/MEASUREMENT.md)
+- [Funkformat, serielles Protokoll und Backend-Schnittstellen](docs/PROTOCOLS.md)
+- [Prüfergebnisse und noch offene Hardware-Abnahme](docs/VALIDATION.md)

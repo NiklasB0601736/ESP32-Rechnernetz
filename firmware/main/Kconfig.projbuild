@@ -1,0 +1,20 @@
+menu "Funklabor"
+config LAB_MASTER
+    bool "Master / USB gateway (disable on slave)"
+    default y
+config LAB_NODE_ID
+    int "Local node ID"
+    range 1 65535
+    default 1
+config LAB_PEER_ID
+    int "Allowed direct peer node ID"
+    range 1 65535
+    default 2
+config LAB_PEER_MAC
+    string "Allowed peer STA MAC (not Bluetooth or AP MAC)"
+    default "00:00:00:00:00:00"
+config LAB_CHANNEL
+    int "Shared Wi-Fi channel"
+    range 1 11
+    default 6
+endmenu

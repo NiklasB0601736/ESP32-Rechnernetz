@@ -1,0 +1,39 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Lokale Messdaten und Testartefakte
+/data/
+/tests/tmp*/
+*.log
+
+# ESP-IDF: heruntergeladene und manuell abgelegte Bibliotheken
+/firmware/managed_components/
+/firmware/components/
+/firmware/lib/
+/firmware/libs/
+/firmware/libraries/
+**/esp-idf/
+**/.espressif/
+**/.pio/
+**/.idf_component_cache/
+
+# ESP-IDF: Builds, Binaerdateien und lokale Board-Konfigurationen
+/firmware/build*/
+/firmware/**/*.a
+/firmware/**/*.lib
+/firmware/**/*.so
+/firmware/**/*.o
+/firmware/**/*.obj
+/firmware/**/*.elf
+/firmware/**/*.bin
+/firmware/sdkconfig
+/firmware/sdkconfig.old
+/firmware/sdkconfig.master
+/firmware/sdkconfig.master.old
+/firmware/sdkconfig.slave
+/firmware/sdkconfig.slave.old
+
+# sdkconfig.defaults, idf_component.yml und dependencies.lock werden versioniert.
