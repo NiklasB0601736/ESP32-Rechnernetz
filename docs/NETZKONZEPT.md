@@ -1,6 +1,6 @@
 # Konzeptnotiz: zentral gesteuertes ESP32-Netz
 
-**Stand: 10.11.2026 · Ideensammlung, keine Implementierungsspezifikation.**
+**Stand: 17.11.2026 · Ideensammlung, keine Implementierungsspezifikation.**
 
 Das bisherige Projekt soll perspektivisch durch den hier beschriebenen Ansatz ersetzt werden. Diese Datei hält zunächst nur die neue Idee fest. Ein Zurücksetzen, Überschreiben oder Umbauen des bestehenden Codes ist in diesem Schritt nicht vorgesehen. Die bisherigen Anleitungen beschreiben weiterhin den alten Zwei-Geräte-Aufbau.
 
@@ -44,6 +44,19 @@ Die Abschnitte **Vorgaben**, **eigene Interpretationen**, **Vorschläge** und **
 - Ermöglicht die Vorgabe der Partneranzahl N.
 - Zeigt das Netz anhand der vom Backend gelieferten Verbindungsstruktur grafisch an.
 - Bietet Kriterien für die Netzberechnung an: **Latenz, Verbindungsstärke, Durchsatz und BER**. Für Durchsatz und BER steht ein Mess- bzw. Bewertungskonzept noch aus.
+
+### Ergaenzte Festlegungen aus der gemeinsamen Konzeptbesprechung
+
+Die folgenden Punkte sind vom Nutzer bestaetigt und gelten als Anforderungen fuer die erste Testversion:
+
+- **Nachbargrenze:** Jeder Knoten darf hoechstens **N direkte Nachbarn** haben. N ist eine Obergrenze, keine geforderte Mindest- oder Exaktzahl. Noch festzulegen ist, ob eine gerichtete Beziehung oder eine beidseitig bestaetigte Verbindung als ein Nachbar zaehlt; fuer die erste Version wird eine beidseitig bestaetigte Verbindung empfohlen.
+- **Zwei feste Routen/Konfigurationen:** Das Backend speichert fuer die erste Version zwei vorgegebene Routen bzw. Netzkonfigurationen. Das Frontend laesst eine davon auswaehlen. Der Master verteilt die Auswahl an die Knoten; jeder Knoten kennt daraus seine vorgesehenen Nachbarn. Noch zu klaeren ist, ob mit "Route" jeweils ein kompletter Satz von Nachbarschaftsverbindungen (Topologie) oder nur ein Pfad durch dieselbe Topologie gemeint ist. Periodische Statusmeldungen erfassen, mit welchen Knoten er tatsaechlich verbunden ist.
+- **Verbindungsfehler:** Ein Knoten ohne aktive Verbindung versucht wiederholt, mindestens einen anderen Knoten aus seiner vorgesehenen bzw. erlaubten Kandidatenmenge zu erreichen. Damit dies die feste Starttopologie nicht unkontrolliert veraendert, sollte der erste Versuch auf die konfigurierten Nachbarn beschraenkt sein; eine Erweiterung der Kandidaten braucht eine eigene Freigaberegel. Kandidatensuche, Wartezeit und Umgang mit einer leeren Kandidatenmenge sind noch festzulegen.
+- **Sicherer Wechsel:** Eine neue Konfiguration wird erst aktiv, wenn die betroffenen Knoten sie erhalten und bestaetigt haben. Bei einem Fehler sollen alle Knoten auf die urspruengliche Netzkonfiguration zurueckfallen. Rueckfallfrist und Verhalten bei teilweise aktivierter Konfiguration muessen noch festgelegt werden.
+- **Messwerte in Version 1:** Das Frontend stellt RTT, RSSI und Zustellquote dar. Durchsatz und BER erscheinen als ausdruecklich nicht verfuegbare Platzhalter, bis belastbare Messverfahren umgesetzt sind.
+- **Optimierung spaeter:** In einer spaeteren Ausbaustufe soll das Backend aus den Verbindungstabellen eine Topologie erstellen. Dijkstra ist danach fuer die Pfadberechnung vorgesehen; die Topologieauswahl ist ein eigener vorgelagerter Schritt.
+
+**Klaerung zur Initialisierung:** Ja, gemeint ist ein festes Startnetz, das vor Beginn der Messungen bekannt ist. Die Knoten erhalten daraus ihre vorgesehenen Nachbarn und den Weg zum Master. Diese Startkonfiguration dient zugleich als Rueckfallkonfiguration. Eine dynamisch berechnete Topologie ersetzt sie erst nach erfolgreicher Verteilung und Bestaetigung.
 
 ## 2. Grafische Übersicht
 
@@ -147,6 +160,34 @@ Falls ESP-NOW beibehalten wird, bestätigt dessen MAC-Sendestatus keinen sichere
 
 **Vorschlag:** Die GUI benennt, ob ein Ereignis eine reale Änderung auslöst oder nur im Modell wirkt. Beispiele: unterstützte Sendeleistungsstufe setzen, Weiterleitung anhalten, eine Verbindung logisch sperren oder Paketverlust simulieren. Künstliche Verluste und künstliche Bitfehler bleiben im Ergebnis erkennbar.
 
+### H. Geeignete Verfahren zur Topologieauswahl
+
+**Einordnung:** Dijkstra loest die spaetere Pfadfrage innerhalb einer feststehenden Topologie. Fuer die Auswahl der Kanten bei einer Obergrenze N pro Knoten eignen sich mehrere Stufen:
+
+1. **Erste Testversion - zwei gespeicherte Konfigurationen:** Die beiden festgelegten Topologien werden als versionierte Konfigurationen im Backend gespeichert und im Frontend auswaehlbar gemacht. Das ist reproduzierbar und erlaubt, Messung, Statusmeldung und sichere Aktivierung zu testen, bevor ein Optimierer hinzukommt.
+2. **Einfacher automatischer Start - gewichteter Spannbaum mit Gradgrenze:** Fuer kleine Netze kann ein Minimum-Spanning-Tree-Ansatz eine zusammenhaengende Grundstruktur mit niedrigen Gesamtkosten liefern. Die Gradgrenze N muss dabei als Nebenbedingung eingehalten werden. Ein gewoehnlicher MST garantiert diese Grenze nicht; wenn keine zulaessige Loesung existiert, muss das Backend dies melden. Gradbegrenzte und ausfallsichere Topologieauswahl ist ein eigenes Optimierungsproblem, wie auch Arbeiten zu Funkmesh-Topologien mit Knotengradgrenzen zeigen ([Beispielstudie](https://doi.org/10.1177/1550147716668062)).
+3. **Robustere Topologie - Redundanz als Nebenbedingung:** Falls ein einzelner Link- oder Knotenausfall das Netz nicht trennen soll, kann eine k-zusammenhaengende Topologie verlangt werden. Das braucht typischerweise mehr Nachbarschaften und kann bei kleinem N oder schlechter Funkreichweite unmoeglich sein.
+4. **Mehrere Kriterien:** Fuer kleine Netze ist eine ganzzahlige Optimierung (z. B. ILP/CP-SAT) mit expliziten Variablen fuer ausgewaehlte Kanten, Gradgrenzen und Master-Erreichbarkeit gut nachvollziehbar. Fuer groessere Netze kann eine Heuristik Kanten schrittweise hinzufuegen oder tauschen und nach jedem Schritt Erreichbarkeit und N pruefen.
+
+**Vorschlag fuer den spaeteren Optimierer:** Zuerst Bedingungen pruefen (Master-Erreichbarkeit, N, Mindest-RSSI, bestaetigte Kanten); danach unter den zulaessigen Topologien ein klares Ziel minimieren. Bei mehreren Zielen sind lexikografische Prioritaeten oft verstaendlicher als undokumentierte Gewichte: etwa zuerst alle Knoten anbinden, dann maximale RTT minimieren, danach Zustellquote verbessern. Gewichtete Summen brauchen Normalisierung und im Frontend sichtbare Gewichte.
+
+Kein Verfahren kann eine Verbindung garantieren, wenn die Kandidatenkanten keine Topologie mit den Anforderungen zulassen. Das Backend sollte dann "keine zulaessige Topologie" samt verletzter Bedingung ausgeben.
+
+### I. Erfassungsverfahren fuer spaetere Messgroessen
+
+| Messgroesse | Verfahren | Darstellung und Grenze |
+|---|---|---|
+| **RTT** | Anfrage mit Sequenznummer senden; Empfaenger antwortet mit derselben Nummer; Zeit am Initiator messen. Fehlende Antwort nach Timeout als fehlgeschlagenen Versuch zaehlen. Pro Richtung und Messrunde mehrere Proben erfassen. | Median und optional p95 in ms; Probenzahl und Timeout-/Erfolgszahl. RTT enthaelt Funk-, Warteschlangen- und Antwortzeit und ist keine Einweglatenz. |
+| **RSSI** | Empfangender Knoten liest den RSSI fuer jedes zuordenbare Pruefpaket und meldet ihn mit Sender-ID, Runde und Richtung. | dBm pro Empfangsrichtung; Median oder Mittelwert plus Stichprobenzahl und Streuung. RSSI ist Empfangspegel, keine direkte Masszahl fuer Paketzuverlaessigkeit. |
+| **Zustellquote** | Sender uebermittelt nummerierte Pruefdatagramme. Empfaenger zaehlt eindeutige Sequenznummern; Duplikate separat. | Eindeutig empfangene / erwartete Pakete in Prozent, je Richtung und Messrunde. Genau angeben, ob MAC-Bestaetigungen oder Anwendungsbestaetigungen gezaehlt werden. ESP-NOW-MAC-Sendeerfolg garantiert keinen Empfang in der Zielanwendung. |
+| **Durchsatz (Platzhalter)** | Spaeter nummerierte Nutzdatenpakete mit definierter Paketgroesse und Senderate ueber ein festes Zeitfenster senden. Am Empfaenger nur eindeutige, vollstaendige Nutzdaten zaehlen. | Zunaechst Goodput in bit/s: Nutzdatenbits am Ziel / Messdauer. Link-Goodput und Ende-zu-Ende-Goodput getrennt ausweisen; die Messlast beeinflusst das Funknetz. |
+| **BER (Platzhalter)** | Eine bekannte Testbitfolge (z. B. PRBS) muss sender- und empfangsseitig bitgenau verglichen werden. Das setzt Zugriff auf empfangene Bits vor Fehlerverwerfung/Korrektur voraus. | Fehlerhafte Bits / verglichene Bits samt Messdauer und Konfidenz. Bei gewoehnlichen ESP-NOW-Anwendungsdaten stehen beschaedigte Funkbits nicht als Bitstrom bereit; Paketverlust oder CRC-Fehler sind daher keine gemessene BER. Eine FER-zu-BER-Schaetzung waere nur mit dokumentiertem Fehlermodell zulaessig und als Schaetzung zu markieren. |
+
+**Messrunden:** Alle Knoten sollten eine gemeinsame Runden-ID, Paketgroesse, Zahl der Pruefpakete und ein Zeitfenster erhalten. Sendeleistung und Topologiekonfiguration bleiben waehrend einer Runde konstant. Protokolliert werden Konfigurationsversion, Zeitpunkt, Richtung, Stichproben und fehlende oder abgelaufene Berichte.
+
+**Quellenhinweise zu den Messverfahren:** ESP-NOW unterscheidet den MAC-Sendebericht von der Zustellung an die Anwendung und empfiehlt bei Bedarf ACKs und Sequenznummern ([ESP-IDF ESP-NOW-Dokumentation](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/network/esp_now.html)). Goodput zaehlt nuetzliche, am Ziel angekommene Daten und schliesst verlorene oder erneut gesendete Bits aus ([RFC 8238](https://www.rfc-editor.org/rfc/rfc8238.html)). Eine direkte BER-Messung setzt einen bekannten bzw. vergleichbaren Bitstrom voraus; die Anforderungen einer indirekten Schaetzung muessen als Annahmen dokumentiert werden ([ETSI EN 300 674-2-1, Anhang B.4.5](https://portal.etsi.org/Portals/0/TBpages/edithelp/Docs/Compared_versions/300500_300999/3006740201/EN%20300%20674-2-1v311_compared%20with%20previous%20version.pdf)).
+
+
 ## 5. Lücken und Unschlüssigkeiten, die vor der Umsetzung zu klären sind
 
 | Punkt | Warum er noch offen ist |
@@ -170,4 +211,4 @@ Falls ESP-NOW beibehalten wird, bestätigt dessen MAC-Sendestatus keinen sichere
 
 **Einordnung für einen möglichen ESP-NOW-Ansatz:** ESP-NOW arbeitet verbindungslos; „verbinden“ müsste hier als Verwaltung zugelassener Partner und Nachrichtenwege definiert werden. Eine logische Partnersperre begrenzt nicht die physische Hörbarkeit des Funks. Für Nachbarerkennung kämen eigene Kennungs- und Prüfmeldungen infrage. Der normale Wi-Fi-Scan sucht Access Points. Siehe [ESP-NOW-Grundprinzip und Peerverwaltung](https://docs.espressif.com/projects/esp-idf/en/v6.0.1/esp32/api-reference/network/esp_now.html) sowie [Wi-Fi-Scan-API](https://docs.espressif.com/projects/esp-idf/en/v6.0.1/esp32/api-reference/network/esp_wifi.html#_CPPv418esp_wifi_scan_startPK18wifi_scan_config_tb).
 
-Für die nächste Konzeptentscheidung sind vor allem **Bedeutung von N**, **Messkontakte gegenüber aktiven Partnern**, **Zielfunktion der Optimierung** und **sichere Verteilung neuer Routen** ausschlaggebend. Erst danach lässt sich der Umfang einer Neuimplementierung eindeutig festlegen.
+Fuer die naechste Konzeptentscheidung bleiben der genaue Inhalt der zwei festen Routen/Konfigurationen, die Ausfallfrist fuer den Rueckfall, die Entdeckungsstrategie isolierter Knoten und die Zielhierarchie des spaeteren Topologieoptimierers offen. Die Bedeutung von N und das feste Startnetz sind nun festgehalten.
