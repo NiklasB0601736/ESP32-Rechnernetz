@@ -1,0 +1,48 @@
+# Lokale Entwicklungsumgebungen und Editoren
+.codex/
+.codex-tmp/
+.vscode/
+.idea/
+
+# Python-Umgebungen und Caches
+.venv/
+venv/
+env/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.ipynb_checkpoints/
+*.egg-info/
+*.py[cod]
+
+# Frontend-Abhaengigkeiten und Caches
+node_modules/
+.npm/
+.parcel-cache/
+.next/
+.nuxt/
+.svelte-kit/
+
+# Build- und Testausgaben
+build/
+dist/
+coverage/
+htmlcov/
+.coverage
+.coverage.*
+.nyc_output/
+.cache/
+
+# ESP-Entwicklungswerkzeuge und heruntergeladene Komponenten
+managed_components/
+.pio/
+.espressif/
+
+# Betriebssystemdateien und Protokolle
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
