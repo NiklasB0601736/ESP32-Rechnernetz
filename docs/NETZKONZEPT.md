@@ -4,7 +4,7 @@
 
 Das bisherige Projekt soll perspektivisch durch den hier beschriebenen Ansatz ersetzt werden. Diese Datei hält zunächst nur die neue Idee fest. Ein Zurücksetzen, Überschreiben oder Umbauen des bestehenden Codes ist in diesem Schritt nicht vorgesehen. Die bisherigen Anleitungen beschreiben weiterhin den alten Zwei-Geräte-Aufbau.
 
-Die Abschnitte **Vorgaben**, **eigene Interpretationen**, **Vorschläge** und **offene Punkte** sind bewusst getrennt. Interpretationen und Vorschläge sind noch keine beschlossenen Anforderungen.
+Die Abschnitte **Vorgaben**, **eigene Interpretationen**, **Vorschläge** und **offene Punkte** sind bewusst getrennt. Interpretationen und Vorschläge sind noch keine beschlossenen Anforderungen. Die gemeinsam übernommene Richtung für Datenformate und Nachrichten ist in Abschnitt 5 dokumentiert; konkrete Feldgrößen und vollständige Schemas bleiben auszuarbeiten.
 
 ## 1. Vorgaben aus der beschriebenen Idee
 
@@ -53,12 +53,13 @@ Die folgenden Punkte sind vom Nutzer bestaetigt und gelten als Anforderungen fue
 - **Nachbargrenze:** Jeder Knoten darf hoechstens **N direkte Nachbarn** haben. N ist eine Obergrenze, keine geforderte Mindest- oder Exaktzahl. Noch festzulegen ist, ob eine gerichtete Beziehung oder eine beidseitig bestaetigte Verbindung als ein Nachbar zaehlt; fuer die erste Version wird eine beidseitig bestaetigte Verbindung empfohlen.
 - **Zwei vollständige Topologien:** Das Backend speichert zwei komplette Topologien mit den vorgesehenen Nachbarschaften. Das Frontend wählt die Zieltopologie; der Master verteilt sie an die Knoten. Gemeint sind zwei Netzstrukturen, zwischen denen gewechselt wird. Periodische Statusmeldungen erfassen die tatsächlich bestätigten Nachbarschaften. Solltopologie und beobachtete Topologie werden getrennt geführt.
 - **Wiederverbindung:** Ein Knoten ohne Netzverbindung versucht wiederholt, mindestens einen anderen Knoten zu erreichen. Welche Kontakte dafür freigegeben sind und wann ein Ausfall angenommen wird, wird in Abschnitt J als Vorschlag präzisiert.
-- **Sicherer Wechsel:** Eine neue Konfiguration wird erst aktiv, wenn die betroffenen Knoten sie erhalten und bestaetigt haben. Bei einem Fehler sollen alle Knoten auf die urspruengliche Netzkonfiguration zurueckfallen. Rueckfallfrist und Verhalten bei teilweise aktivierter Konfiguration muessen noch festgelegt werden.
+- **Sicherer Wechsel und statischer Rückfall in Version 1:** Eine neue Konfiguration wird erst aktiv, wenn die betroffenen Knoten sie erhalten und bestätigt haben. Bei einem Fehler sollen alle Knoten auf eine fest gespeicherte Rückfalltopologie zurückfallen. Diese entspricht zunächst dem ursprünglichen Startnetz und wird im laufenden Versuch nicht automatisch neu ausgewählt. Rückfallfrist und Verhalten bei teilweise aktivierter Konfiguration müssen noch festgelegt werden.
+- **Spätere Ausbaustufe des Rückfalls:** Die „beste“ Topologie soll in periodischen Zeitabständen als Rückfalltopologie bestimmt werden. Bewertungskriterien, Kandidatenmenge und Zeitintervall werden noch festgelegt. Dieser periodisch aktualisierte Rückfall ist für eine spätere Version vorgesehen.
 - **Messwerte in Version 1:** Das Frontend stellt RTT, RSSI und Zustellquote dar. Durchsatz und BER erscheinen als ausdruecklich nicht verfuegbare Platzhalter, bis belastbare Messverfahren umgesetzt sind.
 - **Pilotsequenz für BER:** Für die spätere BER-Erfassung soll periodisch eine bekannte Pilotsequenz gesendet werden. Das Intervall ist im Frontend variabel; **eine Sekunde** ist ein Beispielwert. Eine Pilotsequenz allein löst die Frage nach dem Zugriff auf fehlerhafte Empfangsbits noch nicht; siehe Abschnitt K.
 - **Optimierung spaeter:** In einer spaeteren Ausbaustufe soll das Backend aus den Verbindungstabellen eine Topologie erstellen. Dijkstra ist danach fuer die Pfadberechnung vorgesehen; die Topologieauswahl ist ein eigener vorgelagerter Schritt.
 
-**Klaerung zur Initialisierung:** Ja, gemeint ist ein festes Startnetz, das vor Beginn der Messungen bekannt ist. Die Knoten erhalten daraus ihre vorgesehenen Nachbarn und den Weg zum Master. Diese Startkonfiguration dient zugleich als Rueckfallkonfiguration. Eine dynamisch berechnete Topologie ersetzt sie erst nach erfolgreicher Verteilung und Bestaetigung.
+**Klärung zur Initialisierung:** Gemeint ist ein festes Startnetz, das vor Beginn der Messungen bekannt ist. Die Knoten erhalten daraus ihre vorgesehenen Nachbarn und den Weg zum Master. In Version 1 dient diese fest gespeicherte Startkonfiguration zugleich als unverändertes Rückfallziel, auch wenn im Frontend auf die andere Betriebstopologie gewechselt wird. Erst in einer späteren Version wird das Rückfallziel periodisch anhand noch festzulegender Kriterien aktualisiert.
 
 ## 2. Grafische Übersicht
 
@@ -148,13 +149,13 @@ Falls ESP-NOW beibehalten wird, bestätigt dessen MAC-Sendestatus keinen sichere
 
 **Vorschlag für einen späteren Bericht:** Mindestens `source_id`, `report_id`, `measurement_round`, Messzeitraum, Konfigurationsversion und Nachbarliste vorsehen. Je Nachbar Messrichtung, RSSI, RTT bzw. eindeutig benannte Latenzgröße, Stichprobenzahl und Erreichbarkeit angeben. Nicht erhobene Werte bleiben `null`; eine leere Liste ist von einem fehlenden Bericht zu unterscheiden.
 
-**Vorschlag für Weiterleitung:** Ursprung und Inhalt erhalten; Weiterleitungsinformationen getrennt führen. Paket-ID, Duplikaterkennung und eine maximale Hopanzahl vorsehen. Bei Bedarf Nachrichten in kleinere Funkpakete zerlegen. Ob die ursprünglichen JSON-Strukturen bereits über Funk oder erst an der seriellen Schnittstelle erzeugt werden, bleibt eine Designentscheidung.
+**Vorschlag für Weiterleitung:** Ursprung und Inhalt erhalten; Weiterleitungsinformationen getrennt führen. Paket-ID, Duplikaterkennung und eine maximale Hopanzahl vorsehen. Bei Bedarf Nachrichten in kleinere Funkpakete zerlegen. Die übernommene Formatrichtung aus Abschnitt 5 verwendet CBOR über Funk und JSON an der seriellen Schnittstelle; das gemeinsame Datenmodell bleibt dabei erhalten.
 
 **Falls Authentizität verlangt wird:** Die ursprüngliche Meldung zusätzlich authentifizieren oder digital signieren. Die genaue Bedeutung von „signiert“ und die Schlüsselverwaltung müssen dann gesondert festgelegt werden.
 
 ### F. Neue Routen kontrolliert aktivieren
 
-**Vorschlag:** Jede Topologiekonfiguration erhält eine Version. Der Master verteilt sie zunächst über die bisher funktionierenden Wege. Die Knoten bestätigen den Empfang; danach folgt eine definierte Aktivierung und die Prüfung der neuen Nachbarschaften und Masterpfade. Nach der bestätigten Anforderung ist das Rückfallziel die **ursprüngliche Starttopologie**. Das Rückfallverfahren und seine Fristen werden in Abschnitt J vorgeschlagen.
+**Vorschlag:** Jede Topologiekonfiguration erhält eine Version. Der Master verteilt sie zunächst über die bisher funktionierenden Wege. Die Knoten bestätigen den Empfang; danach folgt eine definierte Aktivierung und die Prüfung der neuen Nachbarschaften und Masterpfade. In Version 1 ist das Rückfallziel die **fest gespeicherte ursprüngliche Starttopologie**. In einer späteren Version soll eine periodisch ausgewählte „beste“ Topologie diese Rolle übernehmen. Das Rückfallverfahren und seine Fristen werden in Abschnitt J vorgeschlagen.
 
 **Vorschlag:** Verbindungswerte über mehrere Runden glätten und eine Mindestverbesserung vor einem Wechsel verlangen. Dadurch kann verhindert werden, dass kleine Schwankungen ständig neue Routen auslösen. Fehlende bzw. zu alte Berichte erhalten einen eigenen Zustand; sie werden nicht als Messwert null interpretiert.
 
@@ -210,7 +211,13 @@ Kein Verfahren kann eine Verbindung garantieren, wenn die Kandidatenkanten keine
 
 **Wiederholungsstrategie:** Versuche mit begrenzter wachsender Wartezeit und kleinem Zufallsversatz wiederholen; nach Erreichen der maximalen Wartezeit weiter versuchen. Ein isolierter Knoten darf auf die bereits gespeicherten Freigaben zugreifen, da er für eine neue Genehmigung das Backend gerade nicht erreicht. Kann keiner dieser Nachbarn erreicht werden, bleibt er als isoliert gekennzeichnet. Eine physisch unterbrochene Funkstrecke wird durch wiederholte Kontaktversuche oder das Laden einer Topologie nicht garantiert wiederhergestellt.
 
-**Rückfall aller Knoten:** Die ursprüngliche Starttopologie muss auf jedem Knoten gespeichert und eindeutig als Rückfallziel bezeichnet sein. Der Master kann erreichbare Knoten zum Rückfall auffordern. Damit auch abgetrennte Knoten zurückfallen können, braucht es zusätzlich einen lokalen Mechanismus, etwa eine befristete Freigabe für den Betrieb außerhalb der Starttopologie. Der Master erneuert diese Freigabe nur, solange alle erforderlichen Knoten ihre Teilnahme bestätigen; bei einem anhaltenden Fehler endet die Erneuerung für alle. Beim Ablauf wechseln die Knoten selbstständig zur Starttopologie. Das ermöglicht einen Rückfall trotz unterbrochener Befehlswege; einen exakt gleichzeitigen Wechsel aller Geräte garantiert es nicht. Ausfallfrist, Gültigkeitsdauer und Wiederaufnahme nach dem Rückfall bleiben festzulegen.
+**Rückfall aller Knoten in Version 1 — festes Ziel, vorgeschlagener Auslöser:** Die ursprüngliche Starttopologie muss auf jedem Knoten gespeichert und eindeutig als statisches Rückfallziel bezeichnet sein. Der Master kann erreichbare Knoten zum Rückfall auffordern. Damit auch abgetrennte Knoten zurückfallen können, braucht es zusätzlich einen lokalen Mechanismus, etwa eine befristete Freigabe für den Betrieb außerhalb der Starttopologie. Der Master erneuert diese Freigabe nur, solange alle erforderlichen Knoten ihre Teilnahme bestätigen; bei einem anhaltenden Fehler endet die Erneuerung für alle. Beim Ablauf wechseln die Knoten selbstständig zur gespeicherten Starttopologie. Dieser Vorschlag betrifft den Auslöser des Rückfalls; das Rückfallziel bleibt dabei statisch. Einen exakt gleichzeitigen Wechsel aller Geräte garantiert das Verfahren nicht. Ausfallfrist, Gültigkeitsdauer und Wiederaufnahme nach dem Rückfall bleiben festzulegen.
+
+**Späterer Rückfall — bestätigte Zielrichtung:** Das Backend soll periodisch die nach noch festzulegenden Kriterien „beste“ Topologie als Rückfallziel bestimmen. Die Rückfalltopologie ist damit später ein regelmäßig aktualisierter gespeicherter Stand. Wie bewertet wird, welche Topologien zur Auswahl stehen und in welchem Intervall die Bewertung stattfindet, ist offen.
+
+**Interpretation, noch nicht vereinbart:** Das periodische Intervall legt fest, wann das Rückfallziel neu bewertet wird. Der tatsächliche Rückfall wird weiterhin durch einen definierten Fehlerzustand ausgelöst. Ein automatischer Wechsel der laufenden Betriebstopologie bei jeder periodischen Bewertung ist daraus noch nicht abgeleitet.
+
+**Vorschlag für die spätere Aktualisierung:** Eine neu ausgewählte Rückfalltopologie erhält eine eigene Version und wird über den Master an alle erforderlichen Knoten verteilt, geprüft, gespeichert und bestätigt. Erst danach wird sie gemeinsam als neues Rückfallziel freigegeben. Scheitert die Aktualisierung, bleibt das bisher bestätigte Rückfallziel gültig. Die im Betrieb aktive Topologie und die für einen Fehlerfall gespeicherte Rückfalltopologie werden getrennt geführt. So ist für einen Rückfall keine neue Berechnung und kein erreichbares Backend nötig. Ob die Topologie nach historischen oder aktuellen Messwerten bewertet und wie deren Alter berücksichtigt wird, bleibt zu entscheiden.
 
 **Noch offen:** Während eines Topologiewechsels dürfen alte und neue Nachbarschaften zusammen die Grenze N nicht ungeklärt überschreiten. Es braucht entweder eine ausdrücklich genehmigte Übergangsregel oder einen Ablauf, der alte Kanten gezielt abbaut und neue aufbaut. Der Aufbau einer Prüfnachbarschaft, ihre Bestätigung und die Freigabe zur regulären Weiterleitung sind dabei unterschiedliche Schritte.
 
@@ -224,7 +231,118 @@ Kein Verfahren kann eine Verbindung garantieren, wenn die Kandidatenkanten keine
 
 **Zeitplanung:** Pilotintervall, Lebenszeichenintervall, Statusmeldeintervall und BER-Auswertefenster sind getrennte Einstellungen. Eine Änderung des Pilotintervalls im Frontend verändert daher nicht automatisch die Ausfallerkennung. Pilotpakete der Knoten sollten zeitlich versetzt werden; Musterlänge und Intervall bestimmen die zusätzliche Messlast. Bei einer Konfigurationsänderung werden alte und neue Messfenster getrennt ausgewertet.
 
-## 5. Lücken und Unschlüssigkeiten, die vor der Umsetzung zu klären sind
+## 5. Datenformate, Nachrichten und gemeinsame Protokollregeln
+
+Die folgende Formatrichtung und der Nachrichtenumfang wurden aus der gemeinsamen Besprechung übernommen. Nachrichtennamen sind Arbeitsnamen, das JSON-Beispiel veranschaulicht den Inhalt. Vollständige Schemas, Feldgrößen, Grenzwerte und der genaue Aktivierungsablauf sind noch festzulegen.
+
+### Formate je Schnittstelle
+
+**Grundentscheidung:** JSON zwischen Frontend, Backend und Master; CBOR für die Funkübertragung zwischen ESP32. Ein gemeinsames logisches Datenmodell beschreibt die Inhalte unabhängig von der Kodierung. Der Master setzt zwischen der Funkdarstellung und der seriellen JSON-Darstellung um. Die Herkunft einer Meldung bleibt beim Weiterleiten und Umkodieren erhalten.
+
+| Format | Vorteile | Einschränkung | Einsatz im Konzept |
+|---|---|---|---|
+| **JSON** | Lesbar, gut protokollierbar und im Frontend einfach zu verarbeiten. | Feldnamen und Textdarstellung erhöhen die Nachrichtengröße; rohe Bytes benötigen eine vereinbarte Textdarstellung. | Frontend ↔ Backend sowie Backend ↔ Master. |
+| **CBOR** | Kompakte Binärdarstellung strukturierter Daten, einschließlich roher Bytefolgen. | Zum Lesen ist ein Decoder nötig; Typen und Feldbedeutungen müssen trotz selbstbeschreibender Kodierung vereinbart werden. | Funknachrichten zwischen ESP32. |
+| **Protocol Buffers** | Festes Schema, generierter Zugriffscode und Regeln zur Erweiterung von Nachrichten. | Zusätzliche Werkzeuge, Codegenerierung und Schemaorganisation. | Dokumentierte Alternative, falls das Protokoll später deutlich wächst. |
+| **Eigenes Binärformat** | Genau kontrollierbare Feldgrößen und geringer Overhead bei kleinen, häufigen Nachrichten. | Feldgrößen, Byte-Reihenfolge, Erweiterungen und Validierung müssen selbst geregelt werden. Eine C-Struktur darf nicht ungeprüft als Speicherabbild verschickt werden. | Mögliche Alternative für besonders häufige Prüf- oder Pilotpakete; zunächst kein zweites allgemeines Funkformat erforderlich. |
+
+JSON ist ein standardisiertes Textformat; CBOR unterstützt ein erweitertes JSON-artiges Datenmodell und wurde unter anderem für kompakte Implementierungen auf begrenzten Geräten entworfen. Protocol Buffers verwendet Schemas und generierten Code. Grundlagen: [JSON, RFC 8259](https://www.rfc-editor.org/rfc/rfc8259.html), [CBOR, RFC 8949](https://www.rfc-editor.org/rfc/rfc8949.html), [Protocol Buffers](https://protobuf.dev/overview/).
+
+**Serielle Rahmung:** Ein kompaktes UTF-8-JSON-Objekt pro Zeile, abgeschlossen mit einem Zeilenumbruch. Maximal zulässige Nachrichtenlänge festlegen; unvollständige oder ungültige Zeilen verwerfen bzw. als Protokollfehler behandeln. Rohe Debugausgaben dürfen nicht mit Protokollnachrichten vermischt werden. Diagnosen erhalten einen eigenen Nachrichtentyp oder einen getrennten Ausgabekanal. Die Zeilenrahmung gilt für die serielle Schnittstelle; der Transport zwischen Frontend und Backend ist noch festzulegen.
+
+**Funkgröße und Aufteilung:** Bei ESP-NOW hängt die maximale Nutzdatenlänge von der unterstützten Version ab; die Espressif-Dokumentation nennt 250 Byte für v1.0 und 1470 Byte für v2.0. Die Firmware muss eine auf den tatsächlich verwendeten Geräten und der IDF-Version unterstützte Grenze festlegen. Protokollkopf und optionale Sicherheitsinformationen verbrauchen einen Teil davon. Größere Berichte und Konfigurationen werden entweder in selbstständig auswertbare Teilmeldungen zerlegt oder mit Nachrichten-ID, Teilnummer und Gesamtzahl übertragen und vollständig zusammengesetzt. Maximale Gesamtgröße und Frist zur Zusammensetzung begrenzen den Speicherbedarf. CBOR allein garantiert nicht, dass jede Tabelle in ein Funkpaket passt. Grundlage: [ESP-NOW-Frameformat](https://docs.espressif.com/projects/esp-idf/en/v6.0.1/esp32/api-reference/network/esp_now.html#frame-format).
+
+### Bereits vorgesehene Datenstrukturen
+
+| Struktur | Weg | Inhalt |
+|---|---|---|
+| **Topologieauswahl** | Frontend → Backend | Kennung der gewünschten vollständigen Topologie A oder B. |
+| **Topologiekonfiguration** | Backend → Master → Knoten | Topologiekennung, Konfigurationsversion, vorgesehene Nachbarn, Nachbargrenze und erforderliche Weiterleitungswege. Der Master kann daraus die jeweils benötigte Knotenkonfiguration verteilen. |
+| **Knotenstatus und Verbindungstabelle** | Knoten → Master → Backend | Tatsächlich bestätigte Nachbarn, Messwerte, Zustand der Master-Erreichbarkeit und aktiver Konfigurationsstand. |
+| **Netzdarstellung** | Backend → Frontend | Zusammengeführte Knoten und Kanten, Solltopologie, beobachtete Topologie, Messwerte, Aktualität und Erreichbarkeit. |
+| **Einstellungen und Ereignisse** | Frontend → Backend → Netz | Sendeleistung und Zufallsbereich, N, Messintervalle sowie konfigurierte reale oder simulierte Ereignisse. |
+| **Pilotsequenz** | Knoten → freigegebene Nachbarn | Bekanntes Bitmuster mit Musterkennung bzw. Seed, Länge, Sequenznummer und Konfigurationszuordnung. |
+| **Bestätigungen** | Zwischen beteiligten Komponenten | Empfang, Prüfung und tatsächlicher Erfolg einer Aktion; diese Zustände dürfen nicht gleichgesetzt werden. |
+
+**Topologie und Routingtabelle:** Die Topologie definiert erlaubte direkte Nachbarschaften. Die Routingtabelle ordnet einem Ziel den nächsten Weiterleitungsknoten zu. Für Version 1 sollen die benötigten Wege zusammen mit den beiden festen Topologien vorgegeben werden. In einer späteren Version werden Topologieauswahl und anschließende Pfadberechnung getrennte Schritte im Backend.
+
+### Zu ergänzende Nachrichtentypen
+
+| Nachricht | Weg | Zweck und wesentliche Angaben |
+|---|---|---|
+| `NODE_HELLO` | Knoten → erreichbare freigegebene Nachbarn; weiter zum Master/Backend, sobald ein Weg besteht | Start oder Neustart melden: Knoten-ID, Startsitzung, unterstützte Protokollversion, Fähigkeiten, aktive Konfiguration und gespeicherte Rückfallversion. |
+| `LINK_REQUEST` / `LINK_CONFIRM` | Zwischen vorgesehenen direkten Nachbarn | Nachbarschaft unter derselben Konfigurationsversion anfragen und bestätigen; Freigabeliste und N prüfen. |
+| `PING` / `PONG` | Zwischen Nachbarn; bei eigener Messung auch über den Pfad zum Master | Erreichbarkeit und RTT prüfen; Anfragekennung und Messziel unterscheiden direkte Nachbarmessung von Messung über mehrere Sprünge. |
+| `MEASUREMENT_CONFIG` | Backend → Master → Knoten | Messrunden-ID, Messdauer, Paketanzahl, Paketgröße, Zeitplanung, Intervalle und Pilotparameter verteilen. |
+| `NODE_REPORT` | Knoten → Master → Backend | Periodischen Status und Verbindungstabelle mit Messfenster, Zählern und aktiver Konfiguration melden. |
+| `CONFIG_PREPARE` / `CONFIG_READY` | Backend/Master → Knoten; Bestätigung zurück | Neue Konfiguration übertragen, prüfen und zunächst zwischenspeichern. `CONFIG_READY` bestätigt die Bereitschaft, nicht die erfolgreiche Aktivierung neuer Funkbeziehungen. |
+| `CONFIG_ACTIVATE` / `CONFIG_RESULT` | Master → Knoten; Ergebnis zurück | Aktivierung einer vorbereiteten Konfiguration auslösen; aktive Version und Ergebnis der Nachbarschafts- und Masterpfadprüfung zurückmelden. |
+| `FALLBACK_EVENT` | Knoten bzw. Master → Backend, sobald erreichbar | Rückfall mit Ursache, vorheriger Konfiguration und Zielversion melden. Das lokale Rückfallverfahren darf nicht von der Zustellung dieses Ereignisses abhängen. |
+| `COMMAND_RESULT` | Empfänger eines Befehls → Auftraggeber | Ergebnis mit Bezug auf den ursprünglichen Befehl, Status und gegebenenfalls Fehlergrund melden. Spezifische Ergebnisse wie `CONFIG_RESULT` können diese gemeinsamen Angaben mitführen. |
+| `PILOT` | Zwischen freigegebenen Nachbarn | Periodische bekannte Bytefolge zur geplanten BER-Erfassung übertragen; Kennung, Sequenz und Parameter mitführen. |
+
+**Bedingte Ergänzung:** Falls der vorgeschlagene Rückfall über befristete Betriebsfreigaben aus Abschnitt J übernommen wird, ist eine Nachricht zur Erneuerung dieser Freigabe nötig, etwa `OPERATING_LEASE`. Sie enthält die betroffene Konfiguration und die Gültigkeitsdauer. Dieses Rückfallverfahren ist weiterhin ein Vorschlag. Für die spätere periodische Aktualisierung der Rückfalltopologie muss außerdem die Rolle einer Konfiguration als aktives Betriebsziel oder gespeichertes Rückfallziel eindeutig übermittelt werden.
+
+**Bestätigungsebenen:** Empfang eines Pakets, vollständiger Empfang einer Konfiguration, erfolgreiche Prüfung, Bereitschaft zur Aktivierung und erfolgreiche Aktivierung sind unterschiedliche Zustände. Insbesondere beweist ein MAC-Sendebericht keinen Empfang in der Zielanwendung. Befehle brauchen deshalb eine eindeutige Zuordnung ihrer Anwendungsantworten; Wiederholungen dürfen denselben Befehl nicht mehrfach wirksam ausführen. Grundlage: [ESP-NOW-Senden und Anwendungsbestätigung](https://docs.espressif.com/projects/esp-idf/en/v6.0.1/esp32/api-reference/network/esp_now.html#send-esp-now-data).
+
+### Gemeinsamer Nachrichtenkopf und Regeln
+
+Die folgenden Angaben gehören abhängig vom Nachrichtentyp zum gemeinsamen Kopf oder zur jeweiligen Nutzlast. Kleine direkte Prüfnachrichten müssen nicht alle Felder eines vollständigen Berichts tragen; für jeden Typ wird später ein verbindliches Schema festgelegt.
+
+| Angabe | Bedeutung |
+|---|---|
+| `schema_version`, `type` | Version des Nachrichtenprotokolls und Nachrichtentyp. |
+| `source_id`, `boot_id`, `sequence` | Ursprungsknoten, eindeutige Startsitzung und Sequenznummer innerhalb dieser Sitzung. Gemeinsam identifizieren sie eine Nachricht auch über Neustarts hinweg. |
+| `destination_id`, `hop_limit` | Endziel und Begrenzung der Weiterleitung bei Nachrichten über mehrere Sprünge. Jeder Weiterleiter reduziert das verbleibende Hoplimit. |
+| `reply_to` bzw. `transaction_id` | Bezug einer Antwort auf eine konkrete Nachricht bzw. einen mehrstufigen Konfigurationsvorgang. |
+| `topology_id`, `config_version` | Kennung der Topologie und Version der zugehörigen Konfiguration. Die Protokollversion ist davon unabhängig. |
+| `fallback_topology_id`, `fallback_config_version` | Separater Stand des lokal gespeicherten Rückfallziels, insbesondere im Statusbericht. |
+| `measurement_round`, Messfenster und Zeitbezug | Zuordnung von Messwerten zu einer Runde und deren Zeitraum. Lokale Laufzeiten verschiedener Knoten sind ohne Synchronisation keine gemeinsame Uhr. |
+
+**Weiterleitung und Herkunft:** Ursprung und ursprüngliche Messwerte bleiben erhalten. Der letzte Weiterleiter wird getrennt geführt oder aus den Empfangsmetadaten ermittelt. Wiederholungen werden anhand der Nachrichtenidentität erkannt. Die Zuordnung per ID ist weiterhin keine kryptografische Signatur; bei späterer Authentifizierung muss auch festgelegt werden, wie der authentifizierte Inhalt trotz Umkodierung unverändert überprüfbar bleibt.
+
+**Messbedeutung und Einheiten:** RSSI in dBm, RTT mit ausdrücklich benannter Zeiteinheit und Angabe der Statistik, Zähler für erwartete und eindeutig empfangene Pakete sowie Stichprobenzahl und Messfenster übertragen. Empfangsrichtung und Messziel eindeutig kennzeichnen. Duplikate getrennt zählen. Nicht erhobene Größen sind `null` bzw. im Binärschema ausdrücklich nicht verfügbar; fehlende Messwerte werden nicht als null Messfehler oder perfekte Verbindung interpretiert. Fehlender Bericht, veralteter Bericht und empfangener Bericht mit leerer Nachbarliste sind unterschiedliche Zustände.
+
+**Grenzen und Validierung:** Für jeden Typ zulässige Feldwerte, maximale Listenlängen und Nachrichtengrößen vereinbaren. Inkompatible Versionen oder ungültige Konfigurationen erhalten einen nachvollziehbaren Fehlerstatus. Konfigurations- und Befehlsantworten beziehen sich eindeutig auf den auslösenden Vorgang. Die genaue Kodierung von IDs, Sequenznummern, Ganzzahlen, optionalen Feldern und gegebenenfalls CBOR-Feldkennungen wird im späteren Schema festgelegt.
+
+### Beispiel eines periodischen Knotenberichts
+
+Die JSON-Darstellung veranschaulicht den Inhalt auf der seriellen Schnittstelle. Über Funk wird derselbe logische Inhalt in CBOR kodiert; abhängig von der festgelegten Paketgröße kann ein Bericht mehrere Teilmeldungen erfordern. Das Beispiel ist kein vollständiges verbindliches Schema.
+
+```json
+{
+  "schema_version": 1,
+  "type": "NODE_REPORT",
+  "source_id": "C",
+  "boot_id": "c-boot-17",
+  "sequence": 42,
+  "topology_id": "A",
+  "config_version": 3,
+  "measurement_round": 18,
+  "window_ms": 5000,
+  "neighbors": [
+    {
+      "neighbor_id": "A",
+      "state": "confirmed",
+      "rx_rssi_mean_dbm": -67,
+      "rtt_median_us": 8400,
+      "rtt_samples": 94,
+      "rx_expected": 100,
+      "rx_unique": 96
+    }
+  ],
+  "goodput_bps": null,
+  "ber": null
+}
+```
+
+Hier ist C der berichtende Empfänger: `rx_rssi_mean_dbm` beschreibt den Empfang bei C von A. Die Zustellquote dieser Richtung ist im Beispiel 96 / 100 = 96 %. Die erwartete Paketanzahl muss durch einen abgestimmten Messplan oder den Senderbericht belegt sein; geplante und tatsächlich gesendete Pakete sind bei Abweichungen getrennt zu behandeln. RTT beschreibt dagegen einen Hin-und-zurück-Vorgang, hier von C aus zu A und zurück. Die Angaben dürfen nicht als Einweglatenz der Richtung A → C interpretiert werden. Im vollständigen Schema sind unter anderem Zeitbezug, Sendeleistungszuordnung, Rückfallstand und Ergebniszähler der RTT-Messung zu ergänzen.
+
+### Pilotdaten und Auswertung getrennt übertragen
+
+Das bekannte Bitmuster wird im Funkpaket als **rohe Bytefolge** übertragen; CBOR unterstützt dafür einen Byte-String. Musterkennung oder PRBS-Seed, Länge und Sequenznummer gehören dazu. Später übermittelt der Knotenbericht die zugehörige Auswertung mit Messrichtung, Messfenster, Anzahl verglichener Bits, Fehlerzahl und Empfangsebene. Die vollständige Pilotfolge muss für diese Auswertung nicht zusätzlich bis zum Backend weitergereicht werden. Die technischen Einschränkungen aus Abschnitt K gelten weiterhin: Ein ausgefallenes Pilotpaket wird separat als Paketverlust erfasst und liefert keine bekannte Zahl fehlerhafter Bits.
+
+## 6. Lücken und Unschlüssigkeiten, die vor der Umsetzung zu klären sind
 
 | Punkt | Warum er noch offen ist |
 |---|---|
@@ -242,11 +360,13 @@ Kein Verfahren kann eine Verbindung garantieren, wenn die Kandidatenkanten keine
 | **Zufällige Leistung** | Bereich, unterstützte Stufen, Verteilung, zeitlicher Verlauf und Verhalten während einer Messrunde fehlen. Außerdem ist offen, ob der Master ebenfalls schwanken darf. |
 | **Durchsatz und BER** | Periodische Pilotsequenz mit im Frontend variablem Intervall ist für BER festgehalten. Empfangsebene, Zugriff auf fehlerhafte Bits, Sequenzlänge und Auswertefenster bleiben offen. Durchsatzmessung und spätere Pfadbewertung sind ebenfalls zu konkretisieren. |
 | **Wiederverbindung und Freigabe** | Abschnitt J schlägt die Beschränkung auf Nachbarn der gültigen Topologie vor. Ausfallfristen, Wiederholungszeiten und der Umgang mit Masterverlust bei noch bestehenden lokalen Kontakten müssen beschlossen werden. |
-| **Rückfall aller Knoten** | Die ursprüngliche Starttopologie ist das vereinbarte Ziel. Lokale Fristen bzw. befristete Freigaben sind nötig, damit auch abgetrennte Knoten zurückfallen. Exakte Gleichzeitigkeit und physische Wiederherstellung sind dadurch nicht garantiert. |
+| **Rückfall aller Knoten** | Version 1 nutzt eine fest gespeicherte Starttopologie als statisches Rückfallziel. Die Auslöser und Fristen sind noch festzulegen; Abschnitt J enthält einen Vorschlag für abgetrennte Knoten. Exakte Gleichzeitigkeit und physische Wiederherstellung sind dadurch nicht garantiert. |
+| **Spätere periodische Wahl des Rückfallziels** | Die „beste“ Topologie soll regelmäßig als Rückfallziel bestimmt werden. Kriterien, Kandidatenmenge, Bewertungsintervall und zulässiges Alter der Messwerte sind offen. Verteilung und gemeinsame Bestätigung einer neuen Rückfallversion sind in Abschnitt J vorgeschlagen. |
 | **Ausfall und veraltete Tabellen** | Wiederholungen, Fristen, Teilberichte, Neustarts, Netztrennung und Rückkehr zum Ausgangszustand brauchen Regeln. |
 | **Routingtabellen verteilen** | Unklar sind Format, Zustellweg, Bestätigungen und das Verhalten bei teilweise empfangenen bzw. aktivierten Versionen. |
+| **Nachrichtenschemas und Paketgrenzen** | JSON/CBOR und der Nachrichtenumfang sind in Abschnitt 5 aufgenommen. Noch festzulegen sind vollständige Schemas, Feldgrößen, maximale Paket- und Listenlängen, Fragmentierung sowie Timeout- und Fehlerregeln. |
 | **Funkprotokoll und „Scan“** | Die neue Idee legt das Funkverfahren noch nicht fest. Ein WLAN-AP-Scan und die Suche nach anwendungseigenen ESP32-Nachbarn sind unterschiedliche Vorgänge. |
 
 **Einordnung für einen möglichen ESP-NOW-Ansatz:** ESP-NOW arbeitet verbindungslos; „verbinden“ müsste hier als Verwaltung zugelassener Partner und Nachrichtenwege definiert werden. Eine logische Partnersperre begrenzt nicht die physische Hörbarkeit des Funks. Für Nachbarerkennung kämen eigene Kennungs- und Prüfmeldungen infrage. Der normale Wi-Fi-Scan sucht Access Points. Siehe [ESP-NOW-Grundprinzip und Peerverwaltung](https://docs.espressif.com/projects/esp-idf/en/v6.0.1/esp32/api-reference/network/esp_now.html) sowie [Wi-Fi-Scan-API](https://docs.espressif.com/projects/esp-idf/en/v6.0.1/esp32/api-reference/network/esp_wifi.html#_CPPv418esp_wifi_scan_startPK18wifi_scan_config_tb).
 
-Für die nächste Konzeptentscheidung bleiben die konkreten Kanten der beiden vollständigen Topologien, die eindeutige Wahl der ursprünglichen Rückfalltopologie, die Fristen für Wiederverbindung und Rückfall sowie die Zielhierarchie des späteren Topologieoptimierers offen. Für BER ist zusätzlich die technisch zugängliche Empfangsebene zu klären.
+Für die nächste Konzeptentscheidung bleiben die konkreten Kanten der beiden vollständigen Topologien, die Kennzeichnung des festen Rückfallziels für Version 1 und die Fristen für Wiederverbindung und Rückfall offen. Für spätere Versionen sind zusätzlich die Zielhierarchie des Topologieoptimierers sowie Kriterien und Intervall für die periodische Auswahl der Rückfalltopologie festzulegen. Für BER ist die technisch zugängliche Empfangsebene zu klären.
