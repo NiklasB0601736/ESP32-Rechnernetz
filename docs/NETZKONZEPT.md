@@ -21,7 +21,7 @@ Die Abschnitte **Vorgaben**, **eigene Interpretationen**, **Vorschläge** und **
 - Das Netz besteht aus ESP32, die **nicht alle direkt miteinander verbunden** sind.
 - Ein **Master** kommuniziert über die serielle Schnittstelle mit dem Backend.
 - Jeder Knoten besitzt eine definierte Sendeleistung. Sie kann in der GUI festgelegt werden oder zufällig innerhalb eines vorgegebenen Bereichs schwanken.
-- Jeder Knoten soll nur **N Partner** haben. Die genaue Bedeutung dieser Grenze bleibt noch festzulegen.
+- Jeder Knoten hat **höchstens N direkte Nachbarn**. Die Grenze ist eine Obergrenze; weniger Nachbarn sind zulässig.
 - Die Knoten stellen ihre vorgesehenen Nachbarschaftsbeziehungen **auf Aufforderung des Masters** her.
 - Bereits bei der Initialisierung kennen sie ihre vorgesehenen Partner und einen Weg zum Master, gegebenenfalls über andere Knoten.
 - In einem definierten Zeitraum prüfen alle Knoten die Verbindungsqualität zu ihren Nachbarn, soweit dies technisch möglich ist.
@@ -34,7 +34,7 @@ Die Abschnitte **Vorgaben**, **eigene Interpretationen**, **Vorschläge** und **
 
 - Empfängt die den Ursprungsknoten zugeordneten Verbindungstabellen.
 - Erstellt daraus eine einheitliche Netzstruktur und übermittelt diese an das Frontend.
-- Soll **Dijkstra** einsetzen, um anhand der Verbindungstabellen das gewünschte „beste Netz“ zu bestimmen. Was daran Pfadberechnung und was Auswahl der Verbindungen ist, muss präzisiert werden.
+- Speichert für die erste Testversion **zwei vollständige Topologien**, zwischen denen über das Frontend gewechselt werden kann. Später soll die Topologie anhand der Verbindungstabellen erstellt und anschließend **Dijkstra** für die Pfadberechnung eingesetzt werden.
 - Berücksichtigt Kriterien, die im Frontend ausgewählt bzw. verändert werden können.
 
 ### Frontend
@@ -43,17 +43,19 @@ Die Abschnitte **Vorgaben**, **eigene Interpretationen**, **Vorschläge** und **
 - Ermöglicht Einstellungen einzelner Knoten, insbesondere der Sendeleistung und ihres Zufallsbereichs.
 - Ermöglicht die Vorgabe der Partneranzahl N.
 - Zeigt das Netz anhand der vom Backend gelieferten Verbindungsstruktur grafisch an.
-- Bietet Kriterien für die Netzberechnung an: **Latenz, Verbindungsstärke, Durchsatz und BER**. Für Durchsatz und BER steht ein Mess- bzw. Bewertungskonzept noch aus.
+- Zeigt in der ersten Version **RTT, RSSI und Zustellquote** sowie Platzhalter für **Durchsatz und BER**. Später lassen sich Kriterien für die Topologieauswahl einstellen.
+- Ermöglicht die Einstellung des Intervalls einer periodischen **Pilotsequenz zur geplanten BER-Erfassung**, beispielsweise einmal pro Sekunde. Das genaue BER-Messverfahren bleibt technisch zu prüfen.
 
 ### Ergaenzte Festlegungen aus der gemeinsamen Konzeptbesprechung
 
 Die folgenden Punkte sind vom Nutzer bestaetigt und gelten als Anforderungen fuer die erste Testversion:
 
 - **Nachbargrenze:** Jeder Knoten darf hoechstens **N direkte Nachbarn** haben. N ist eine Obergrenze, keine geforderte Mindest- oder Exaktzahl. Noch festzulegen ist, ob eine gerichtete Beziehung oder eine beidseitig bestaetigte Verbindung als ein Nachbar zaehlt; fuer die erste Version wird eine beidseitig bestaetigte Verbindung empfohlen.
-- **Zwei feste Routen/Konfigurationen:** Das Backend speichert fuer die erste Version zwei vorgegebene Routen bzw. Netzkonfigurationen. Das Frontend laesst eine davon auswaehlen. Der Master verteilt die Auswahl an die Knoten; jeder Knoten kennt daraus seine vorgesehenen Nachbarn. Noch zu klaeren ist, ob mit "Route" jeweils ein kompletter Satz von Nachbarschaftsverbindungen (Topologie) oder nur ein Pfad durch dieselbe Topologie gemeint ist. Periodische Statusmeldungen erfassen, mit welchen Knoten er tatsaechlich verbunden ist.
-- **Verbindungsfehler:** Ein Knoten ohne aktive Verbindung versucht wiederholt, mindestens einen anderen Knoten aus seiner vorgesehenen bzw. erlaubten Kandidatenmenge zu erreichen. Damit dies die feste Starttopologie nicht unkontrolliert veraendert, sollte der erste Versuch auf die konfigurierten Nachbarn beschraenkt sein; eine Erweiterung der Kandidaten braucht eine eigene Freigaberegel. Kandidatensuche, Wartezeit und Umgang mit einer leeren Kandidatenmenge sind noch festzulegen.
+- **Zwei vollständige Topologien:** Das Backend speichert zwei komplette Topologien mit den vorgesehenen Nachbarschaften. Das Frontend wählt die Zieltopologie; der Master verteilt sie an die Knoten. Gemeint sind zwei Netzstrukturen, zwischen denen gewechselt wird. Periodische Statusmeldungen erfassen die tatsächlich bestätigten Nachbarschaften. Solltopologie und beobachtete Topologie werden getrennt geführt.
+- **Wiederverbindung:** Ein Knoten ohne Netzverbindung versucht wiederholt, mindestens einen anderen Knoten zu erreichen. Welche Kontakte dafür freigegeben sind und wann ein Ausfall angenommen wird, wird in Abschnitt J als Vorschlag präzisiert.
 - **Sicherer Wechsel:** Eine neue Konfiguration wird erst aktiv, wenn die betroffenen Knoten sie erhalten und bestaetigt haben. Bei einem Fehler sollen alle Knoten auf die urspruengliche Netzkonfiguration zurueckfallen. Rueckfallfrist und Verhalten bei teilweise aktivierter Konfiguration muessen noch festgelegt werden.
 - **Messwerte in Version 1:** Das Frontend stellt RTT, RSSI und Zustellquote dar. Durchsatz und BER erscheinen als ausdruecklich nicht verfuegbare Platzhalter, bis belastbare Messverfahren umgesetzt sind.
+- **Pilotsequenz für BER:** Für die spätere BER-Erfassung soll periodisch eine bekannte Pilotsequenz gesendet werden. Das Intervall ist im Frontend variabel; **eine Sekunde** ist ein Beispielwert. Eine Pilotsequenz allein löst die Frage nach dem Zugriff auf fehlerhafte Empfangsbits noch nicht; siehe Abschnitt K.
 - **Optimierung spaeter:** In einer spaeteren Ausbaustufe soll das Backend aus den Verbindungstabellen eine Topologie erstellen. Dijkstra ist danach fuer die Pfadberechnung vorgesehen; die Topologieauswahl ist ein eigener vorgelagerter Schritt.
 
 **Klaerung zur Initialisierung:** Ja, gemeint ist ein festes Startnetz, das vor Beginn der Messungen bekannt ist. Die Knoten erhalten daraus ihre vorgesehenen Nachbarn und den Weg zum Master. Diese Startkonfiguration dient zugleich als Rueckfallkonfiguration. Eine dynamisch berechnete Topologie ersetzt sie erst nach erfolgreicher Verteilung und Bestaetigung.
@@ -152,7 +154,7 @@ Falls ESP-NOW beibehalten wird, bestätigt dessen MAC-Sendestatus keinen sichere
 
 ### F. Neue Routen kontrolliert aktivieren
 
-**Vorschlag:** Jede Routingkonfiguration erhält eine Version. Der Master verteilt sie zunächst über die bisher funktionierenden Wege. Die Knoten bestätigen den Empfang; danach folgt eine definierte Aktivierung. Bei Nichterreichbarkeit greift eine festgelegte Rückkehr zur letzten brauchbaren Konfiguration.
+**Vorschlag:** Jede Topologiekonfiguration erhält eine Version. Der Master verteilt sie zunächst über die bisher funktionierenden Wege. Die Knoten bestätigen den Empfang; danach folgt eine definierte Aktivierung und die Prüfung der neuen Nachbarschaften und Masterpfade. Nach der bestätigten Anforderung ist das Rückfallziel die **ursprüngliche Starttopologie**. Das Rückfallverfahren und seine Fristen werden in Abschnitt J vorgeschlagen.
 
 **Vorschlag:** Verbindungswerte über mehrere Runden glätten und eine Mindestverbesserung vor einem Wechsel verlangen. Dadurch kann verhindert werden, dass kleine Schwankungen ständig neue Routen auslösen. Fehlende bzw. zu alte Berichte erhalten einen eigenen Zustand; sie werden nicht als Messwert null interpretiert.
 
@@ -181,34 +183,70 @@ Kein Verfahren kann eine Verbindung garantieren, wenn die Kandidatenkanten keine
 | **RSSI** | Empfangender Knoten liest den RSSI fuer jedes zuordenbare Pruefpaket und meldet ihn mit Sender-ID, Runde und Richtung. | dBm pro Empfangsrichtung; Median oder Mittelwert plus Stichprobenzahl und Streuung. RSSI ist Empfangspegel, keine direkte Masszahl fuer Paketzuverlaessigkeit. |
 | **Zustellquote** | Sender uebermittelt nummerierte Pruefdatagramme. Empfaenger zaehlt eindeutige Sequenznummern; Duplikate separat. | Eindeutig empfangene / erwartete Pakete in Prozent, je Richtung und Messrunde. Genau angeben, ob MAC-Bestaetigungen oder Anwendungsbestaetigungen gezaehlt werden. ESP-NOW-MAC-Sendeerfolg garantiert keinen Empfang in der Zielanwendung. |
 | **Durchsatz (Platzhalter)** | Spaeter nummerierte Nutzdatenpakete mit definierter Paketgroesse und Senderate ueber ein festes Zeitfenster senden. Am Empfaenger nur eindeutige, vollstaendige Nutzdaten zaehlen. | Zunaechst Goodput in bit/s: Nutzdatenbits am Ziel / Messdauer. Link-Goodput und Ende-zu-Ende-Goodput getrennt ausweisen; die Messlast beeinflusst das Funknetz. |
-| **BER (Platzhalter)** | Eine bekannte Testbitfolge (z. B. PRBS) muss sender- und empfangsseitig bitgenau verglichen werden. Das setzt Zugriff auf empfangene Bits vor Fehlerverwerfung/Korrektur voraus. | Fehlerhafte Bits / verglichene Bits samt Messdauer und Konfidenz. Bei gewoehnlichen ESP-NOW-Anwendungsdaten stehen beschaedigte Funkbits nicht als Bitstrom bereit; Paketverlust oder CRC-Fehler sind daher keine gemessene BER. Eine FER-zu-BER-Schaetzung waere nur mit dokumentiertem Fehlermodell zulaessig und als Schaetzung zu markieren. |
+| **BER (Platzhalter)** | Periodische bekannte Pilotsequenz; Intervall im Frontend einstellbar, z. B. 1 s. Vergleich von erwarteter und empfangener Bitfolge auf einer ausdrücklich definierten Empfangsebene. | Fehlerhafte Bits / verglichene Bits samt Stichprobenumfang und Empfangsebene. Eine Funk-BER vor Fehlerkorrektur erfordert Zugriff auf die entsprechenden Bits. Der normale ESP-NOW-Anwendungsempfang liefert dafür keinen vollständigen fehlerhaften Bitstrom. Ausgefallene Pilotpakete werden separat als Verluste erfasst; siehe Abschnitt K. |
 
 **Messrunden:** Alle Knoten sollten eine gemeinsame Runden-ID, Paketgroesse, Zahl der Pruefpakete und ein Zeitfenster erhalten. Sendeleistung und Topologiekonfiguration bleiben waehrend einer Runde konstant. Protokolliert werden Konfigurationsversion, Zeitpunkt, Richtung, Stichproben und fehlende oder abgelaufene Berichte.
 
 **Quellenhinweise zu den Messverfahren:** ESP-NOW unterscheidet den MAC-Sendebericht von der Zustellung an die Anwendung und empfiehlt bei Bedarf ACKs und Sequenznummern ([ESP-IDF ESP-NOW-Dokumentation](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/network/esp_now.html)). Goodput zaehlt nuetzliche, am Ziel angekommene Daten und schliesst verlorene oder erneut gesendete Bits aus ([RFC 8238](https://www.rfc-editor.org/rfc/rfc8238.html)). Eine direkte BER-Messung setzt einen bekannten bzw. vergleichbaren Bitstrom voraus; die Anforderungen einer indirekten Schaetzung muessen als Annahmen dokumentiert werden ([ETSI EN 300 674-2-1, Anhang B.4.5](https://portal.etsi.org/Portals/0/TBpages/edithelp/Docs/Compared_versions/300500_300999/3006740201/EN%20300%20674-2-1v311_compared%20with%20previous%20version.pdf)).
 
 
+### J. Wiederverbindung und Freigaberegel — Vorschlag, noch nicht beschlossen
+
+**Begriff:** Bei einem möglichen ESP-NOW-Einsatz ist eine Verbindung eine von der Anwendung verwaltete und bestätigte Nachbarschaft. ESP-NOW selbst arbeitet verbindungslos. Wiederverbindung bedeutet hier, diese Nachbarschaft durch erneute Kontaktaufnahme und Bestätigung wieder als nutzbar einzustufen.
+
+| Anlass | Vorgeschlagenes Verhalten |
+|---|---|
+| **Start oder Neustart eines Knotens** | Vorgesehene Nachbarn der gültigen Konfiguration kontaktieren. Beim Kaltstart ohne gültige aktuelle Konfiguration die gespeicherte Starttopologie verwenden. |
+| **Bestätigter Nachbar antwortet nicht mehr** | Nach mehreren fehlenden Lebenszeichen bzw. einer Ausfallfrist die Kante als ausgefallen markieren und Kontaktversuche wiederholen. Ein einzelner Paketverlust löst noch keinen Topologierückfall aus. |
+| **Keine bestätigte Nachbarschaft mehr** | Mit wiederholten, zeitlich versetzten Versuchen mindestens einen freigegebenen Nachbarn erreichen. Der andere Knoten muss selbst noch Kapazität nach N haben. |
+| **Nachbarn erreichbar, aber kein Weg zum Master** | Zustand als „lokal verbunden, Master nicht erreichbar“ melden, soweit möglich. Zusätzlich den Masterpfad prüfen und reparieren; eine lokale Verbindung allein beweist keine Netzanbindung. Nach Ablauf einer festgelegten Frist das Rückfallverfahren auslösen. |
+| **Wechsel zwischen den beiden Topologien** | Neue Beziehungen gezielt aufbauen und bestätigen. Das ist ein geplanter Konfigurationswechsel. Scheitern Verteilung, Aufbau oder Prüfung innerhalb der Frist, auf die ursprüngliche Starttopologie zurückfallen. |
+
+**Ausfallerkennung:** Nachbarschaften über periodische Lebenszeichen oder bestätigte Prüfnachrichten überwachen. Beispiel für eine spätere Parametrisierung: Prüfung jede Sekunde, Ausfall nach drei aufeinanderfolgenden unbeantworteten Prüfungen. Diese Werte sind Vorschläge. Lokale Prüfungen und die Bestätigung der Master-Erreichbarkeit brauchen getrennte Fristen. Ein beim Backend fehlender Statusbericht ist zunächst „veraltet/unbekannt“ und beweist allein keinen Nachbarausfall.
+
+**Freigaberegel bedeutet:** In der ersten Version enthält jede vollständige Topologie pro Knoten eine Liste erlaubter Nachbarn. Eine aktive Beziehung A–B darf nur entstehen, wenn beide Knoten sie in derselben Konfigurationsversion freigegeben haben, beide die Kontaktaufnahme bestätigen und die Nachbargrenze N eingehalten wird. Gleichzeitig laufende Kontaktversuche müssen freie Plätze reservieren, damit N nicht versehentlich überschritten wird. Eine Wiederverbindung zu einem bereits freigegebenen Nachbarn benötigt keine neue Einzelentscheidung des Backends: Die gespeicherte Topologie erteilt dafür bereits die Erlaubnis. Ein hörbarer fremder Knoten wird durch den Empfang einer Nachricht nicht automatisch Partner.
+
+**Beispiel:** In Topologie A darf Knoten C nur mit A und D verbunden sein. C verliert beide Kontakte und versucht A und D erneut. Ein hörbarer Knoten B ist dadurch noch kein zulässiger Partner. Die Beziehung C–B darf erst nach einer vom Master verteilten und bestätigten Konfiguration entstehen, die sie für beide Enden erlaubt. So bleibt die im Frontend gewählte Topologie nachvollziehbar. Eine spätere automatische Notfallfreigabe wäre eine zusätzliche Betriebsart mit eigener Regelung.
+
+**Wiederholungsstrategie:** Versuche mit begrenzter wachsender Wartezeit und kleinem Zufallsversatz wiederholen; nach Erreichen der maximalen Wartezeit weiter versuchen. Ein isolierter Knoten darf auf die bereits gespeicherten Freigaben zugreifen, da er für eine neue Genehmigung das Backend gerade nicht erreicht. Kann keiner dieser Nachbarn erreicht werden, bleibt er als isoliert gekennzeichnet. Eine physisch unterbrochene Funkstrecke wird durch wiederholte Kontaktversuche oder das Laden einer Topologie nicht garantiert wiederhergestellt.
+
+**Rückfall aller Knoten:** Die ursprüngliche Starttopologie muss auf jedem Knoten gespeichert und eindeutig als Rückfallziel bezeichnet sein. Der Master kann erreichbare Knoten zum Rückfall auffordern. Damit auch abgetrennte Knoten zurückfallen können, braucht es zusätzlich einen lokalen Mechanismus, etwa eine befristete Freigabe für den Betrieb außerhalb der Starttopologie. Der Master erneuert diese Freigabe nur, solange alle erforderlichen Knoten ihre Teilnahme bestätigen; bei einem anhaltenden Fehler endet die Erneuerung für alle. Beim Ablauf wechseln die Knoten selbstständig zur Starttopologie. Das ermöglicht einen Rückfall trotz unterbrochener Befehlswege; einen exakt gleichzeitigen Wechsel aller Geräte garantiert es nicht. Ausfallfrist, Gültigkeitsdauer und Wiederaufnahme nach dem Rückfall bleiben festzulegen.
+
+**Noch offen:** Während eines Topologiewechsels dürfen alte und neue Nachbarschaften zusammen die Grenze N nicht ungeklärt überschreiten. Es braucht entweder eine ausdrücklich genehmigte Übergangsregel oder einen Ablauf, der alte Kanten gezielt abbaut und neue aufbaut. Der Aufbau einer Prüfnachbarschaft, ihre Bestätigung und die Freigabe zur regulären Weiterleitung sind dabei unterschiedliche Schritte.
+
+### K. Periodische Pilotsequenz für die geplante BER-Erfassung
+
+**Festlegung des Nutzers:** Eine bekannte Pilotsequenz wird periodisch gesendet. Das Sendeintervall lässt sich im Frontend einstellen, beispielsweise auf **1 Sekunde**. In der ersten Version bleibt die BER-Anzeige ein Platzhalter, solange kein belastbares Messverfahren verfügbar ist.
+
+**Vorschlag für den Ablauf:** Jeder teilnehmende Sender überträgt die Sequenz an seine freigegebenen Nachbarn. Zu jeder Übertragung gehören Sender-ID, Sequenznummer, Konfigurationsversion sowie eine Kennung für Muster oder PRBS-Seed und Länge. Der Empfänger erzeugt dieselbe Referenzfolge, richtet sie anhand der Kennung aus und vergleicht die verfügbaren Empfangsbits. Unterschiedliche Bitpositionen werden gezählt; über das Auswertefenster gilt **BER = fehlerhafte verglichene Bits / insgesamt verglichene Bits**. Empfangsrichtung, Sequenzlänge, Anzahl der Piloten und Auswertefenster werden mitgemeldet. Bei null vergleichbaren Bits bleibt der Wert nicht verfügbar.
+
+**Technische Grenze:** Eine bekannte Folge ist Voraussetzung für einen Bitvergleich, schafft aber keinen Zugriff auf Funkbits, die der Empfänger oder Treiber bereits verworfen bzw. korrigiert hat. Der normale ESP-NOW-Empfang stellt Anwendungsdaten bereit; daraus lässt sich keine vollständige Funk-BER vor Fehlerkorrektur ableiten. Ein Vergleich ausschließlich erfolgreich zugestellter Nutzdaten beschreibt nur diese ausgewählte Menge auf Anwendungsebene. Ein fehlendes Pilotpaket ist ein Paketverlust mit unbekannter Zahl fehlerhafter Bits; es darf weder als null Bitfehler noch als vollständig fehlerhafte Bitfolge gezählt werden. Die konkrete Empfangsebene und eine geeignete Schnittstelle bzw. zusätzliche Messtechnik müssen deshalb vor der BER-Implementierung festgelegt werden. Siehe [ESP-NOW-Empfangsschnittstelle](https://docs.espressif.com/projects/esp-idf/en/v6.0.1/esp32/api-reference/network/esp_now.html#receiving-esp-now-data).
+
+**Zeitplanung:** Pilotintervall, Lebenszeichenintervall, Statusmeldeintervall und BER-Auswertefenster sind getrennte Einstellungen. Eine Änderung des Pilotintervalls im Frontend verändert daher nicht automatisch die Ausfallerkennung. Pilotpakete der Knoten sollten zeitlich versetzt werden; Musterlänge und Intervall bestimmen die zusätzliche Messlast. Bei einer Konfigurationsänderung werden alte und neue Messfenster getrennt ausgewertet.
+
 ## 5. Lücken und Unschlüssigkeiten, die vor der Umsetzung zu klären sind
 
 | Punkt | Warum er noch offen ist |
 |---|---|
-| **„Nur N Partner“** | Genau N oder höchstens N? Globaler Wert oder je Knoten? Zählen eingehende und ausgehende Kontakte gemeinsam? Gilt die Grenze auch für den Master? |
+| **Nachbargrenze N** | Höchstens N Nachbarn pro Knoten ist festgelegt. Noch offen sind die Zählweise gerichteter Kontakte, ein globaler oder individueller Grenzwert und eine mögliche Sonderregel für den Master. |
 | **Erreichbarkeit bei kleinem N** | Manche Grenzen erlauben keine zusammenhängende Topologie. Bei gegenseitigen Verbindungen und maximal einem Partner pro Knoten lässt sich beispielsweise kein zusammenhängendes Netz mit mehr als zwei Knoten aufbauen. |
 | **Alle Nachbarn messen, nur N Partner nutzen** | Es fehlt die Regel, ob Messkontakte außerhalb der aktiven Partner erlaubt sind und ob bislang unbekannte Nachbarn überhaupt entdeckt werden sollen. |
-| **Starttopologie und Master-Auftrag** | Sind die Partner am Start nur bekannt oder schon kommunikationsbereit? Wie erreicht der erste Master-Auftrag indirekte Knoten, bevor reguläre Verbindungen aktiviert sind? |
+| **Starttopologie und Master-Auftrag** | Ein festes Startnetz ist vereinbart. Es braucht noch ein Verfahren, mit dem die Knoten dessen Nachbarschaften ohne bereits funktionierenden Masterpfad aufbauen und bestätigen. |
 | **Routenänderung und N-Grenze** | Während eines Wechsels können alte und neue Partner zusammen mehr als N ergeben. Es fehlt die Entscheidung zwischen vorübergehender Ausnahme und einem Wechsel, der die Grenze durchgehend einhält. |
-| **Vorgegebene Partner oder Optimierung** | Darf das Backend Partner austauschen oder nur Wege über fest erlaubte Partner wählen? Bei ausschließlich festen Partnern kann es keine beliebige neue Netzstruktur erzeugen. |
+| **Vorgegebene Partner und spätere Optimierung** | Version 1 wechselt zwischen zwei vollständigen Topologien. Später soll das Backend Topologien aus Verbindungstabellen erzeugen. Die Freigabe von Messkontakten zu zusätzlichen Kandidaten bleibt zu entscheiden. |
 | **„Bestes Netz“ und Dijkstra** | Offen sind Ziel, Kostenmodell und Nebenbedingungen: kürzeste Pfade, geringe Maximallatenz, hohe Erreichbarkeit, faire Lastverteilung oder etwas anderes. |
 | **Rückweg vom Master** | Ein funktionierender Berichtsweg zum Master garantiert keine erfolgreiche Verteilung von Befehlen in Gegenrichtung. Beide Richtungen müssen berücksichtigt werden. |
 | **Verbindungsstärke „in dB“** | RSSI, Dämpfung und ein selbst definierter Qualitätswert sind verschiedene Größen. Bezeichnung, Einheit und Messrichtung fehlen. |
 | **„Mit ID signiert“** | Eine Herkunftsangabe und eine kryptografische Signatur erfüllen unterschiedliche Aufgaben. Die gewünschte Bedeutung ist noch nicht festgelegt. |
-| **Latenz** | Einweglatenz, RTT, Warteschlangenzeit oder Latenz eines gesamten Pfads? Paketgröße und Auswertung müssen vergleichbar sein. |
+| **RTT-Auswertung** | RTT ist festgelegt. Noch offen sind Paketgröße, Timeout, Stichprobenumfang und die getrennte Anzeige direkter Nachbar-RTT und der RTT zum Master über mehrere Sprünge. |
 | **Zufällige Leistung** | Bereich, unterstützte Stufen, Verteilung, zeitlicher Verlauf und Verhalten während einer Messrunde fehlen. Außerdem ist offen, ob der Master ebenfalls schwanken darf. |
-| **Durchsatz und BER** | Messverfahren und Pfadbewertung fehlen. Für BER ist insbesondere die Verfügbarkeit realer fehlerhafter Funkbits ungeklärt. |
+| **Durchsatz und BER** | Periodische Pilotsequenz mit im Frontend variablem Intervall ist für BER festgehalten. Empfangsebene, Zugriff auf fehlerhafte Bits, Sequenzlänge und Auswertefenster bleiben offen. Durchsatzmessung und spätere Pfadbewertung sind ebenfalls zu konkretisieren. |
+| **Wiederverbindung und Freigabe** | Abschnitt J schlägt die Beschränkung auf Nachbarn der gültigen Topologie vor. Ausfallfristen, Wiederholungszeiten und der Umgang mit Masterverlust bei noch bestehenden lokalen Kontakten müssen beschlossen werden. |
+| **Rückfall aller Knoten** | Die ursprüngliche Starttopologie ist das vereinbarte Ziel. Lokale Fristen bzw. befristete Freigaben sind nötig, damit auch abgetrennte Knoten zurückfallen. Exakte Gleichzeitigkeit und physische Wiederherstellung sind dadurch nicht garantiert. |
 | **Ausfall und veraltete Tabellen** | Wiederholungen, Fristen, Teilberichte, Neustarts, Netztrennung und Rückkehr zum Ausgangszustand brauchen Regeln. |
 | **Routingtabellen verteilen** | Unklar sind Format, Zustellweg, Bestätigungen und das Verhalten bei teilweise empfangenen bzw. aktivierten Versionen. |
 | **Funkprotokoll und „Scan“** | Die neue Idee legt das Funkverfahren noch nicht fest. Ein WLAN-AP-Scan und die Suche nach anwendungseigenen ESP32-Nachbarn sind unterschiedliche Vorgänge. |
 
 **Einordnung für einen möglichen ESP-NOW-Ansatz:** ESP-NOW arbeitet verbindungslos; „verbinden“ müsste hier als Verwaltung zugelassener Partner und Nachrichtenwege definiert werden. Eine logische Partnersperre begrenzt nicht die physische Hörbarkeit des Funks. Für Nachbarerkennung kämen eigene Kennungs- und Prüfmeldungen infrage. Der normale Wi-Fi-Scan sucht Access Points. Siehe [ESP-NOW-Grundprinzip und Peerverwaltung](https://docs.espressif.com/projects/esp-idf/en/v6.0.1/esp32/api-reference/network/esp_now.html) sowie [Wi-Fi-Scan-API](https://docs.espressif.com/projects/esp-idf/en/v6.0.1/esp32/api-reference/network/esp_wifi.html#_CPPv418esp_wifi_scan_startPK18wifi_scan_config_tb).
 
-Fuer die naechste Konzeptentscheidung bleiben der genaue Inhalt der zwei festen Routen/Konfigurationen, die Ausfallfrist fuer den Rueckfall, die Entdeckungsstrategie isolierter Knoten und die Zielhierarchie des spaeteren Topologieoptimierers offen. Die Bedeutung von N und das feste Startnetz sind nun festgehalten.
+Für die nächste Konzeptentscheidung bleiben die konkreten Kanten der beiden vollständigen Topologien, die eindeutige Wahl der ursprünglichen Rückfalltopologie, die Fristen für Wiederverbindung und Rückfall sowie die Zielhierarchie des späteren Topologieoptimierers offen. Für BER ist zusätzlich die technisch zugängliche Empfangsebene zu klären.
