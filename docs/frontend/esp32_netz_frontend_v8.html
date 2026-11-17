@@ -1,0 +1,1903 @@
+<!DOCTYPE html>
+<html lang="de" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Mesh Network Analyzer & Control Center v8</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Plus Jakarta Sans', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #060b13;
+            color: #e2e8f0;
+            overflow-x: hidden;
+        }
+        .grid-bg {
+            background-size: 30px 30px;
+            background-image: 
+                linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(51, 65, 85, 0.8);
+            border-radius: 4px;
+        }
+        .edge-hitarea {
+            cursor: pointer;
+            transition: stroke 0.15s;
+        }
+        .edge-hitarea:hover {
+            stroke: rgba(56, 189, 248, 0.35);
+        }
+        .node-draggable {
+            cursor: grab;
+        }
+        .node-draggable:active {
+            cursor: grabbing;
+        }
+    </style>
+</head>
+<body class="font-sans grid-bg min-h-screen flex flex-col antialiased selection:bg-cyan-50 selection:text-white">
+
+    <!-- Header Navigation & Echtzeit-Regelkreis -->
+    <header class="border-b border-slate-800/80 glass-panel sticky top-0 z-30 px-4 lg:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center space-x-3">
+            <div class="h-10 w-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+                <i class="fa-solid fa-network-wired text-white text-lg"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-slate-100 text-base leading-tight tracking-wide flex items-center gap-2">
+                    ESP32 Mesh Control & Analyzer
+                    <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700/60">v8 • Alle Bugs behoben</span>
+                </h1>
+                <p class="text-[11px] text-slate-400 font-mono">Drag & Drop Aufbau • Grüne & Rot-Gestrichelte Links • Blau-Leuchtender Dijkstra • Link-Inspektor</p>
+            </div>
+        </div>
+
+        <!-- Echtzeit-Regelkreis Bar -->
+        <div class="hidden xl:flex items-center space-x-1.5 bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-700/60 font-mono text-[10px]" id="control-loop-bar">
+            <span id="init-badge" class="px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-700/50" title="Festes Startnetz (Standardnetz 1) geladen">
+                <i class="fa-solid fa-check mr-1"></i>1.Startnetz
+            </span>
+            <i class="fa-solid fa-arrow-right text-[8px] text-slate-600"></i>
+            <div class="flex items-center space-x-1 bg-slate-950/80 px-2 py-0.5 rounded-lg border border-slate-800">
+                <span class="text-cyan-400 font-bold mr-1"><i class="fa-solid fa-bolt text-amber-400 mr-1"></i>Runde <span id="round-counter">1</span>:</span>
+                <span class="loop-step px-1.5 py-0.5 rounded" data-step="2">2.Anfordern</span>
+                <span class="text-slate-600">→</span>
+                <span class="loop-step px-1.5 py-0.5 rounded" data-step="3">3.Messen</span>
+                <span class="text-slate-600">→</span>
+                <span class="loop-step px-1.5 py-0.5 rounded" data-step="4">4.Melden</span>
+                <span class="text-slate-600">→</span>
+                <span class="loop-step px-1.5 py-0.5 rounded" data-step="5">5.Berechnen</span>
+                <span class="text-slate-600">→</span>
+                <span class="loop-step px-1.5 py-0.5 rounded" data-step="6">6.Aktivieren</span>
+            </div>
+        </div>
+
+        <!-- Steuerung & Echtzeit-Geschwindigkeit -->
+        <div class="flex items-center space-x-2.5">
+            <!-- Stresstest / Netzlast -->
+            <div class="hidden md:flex items-center space-x-2 bg-slate-900/80 px-2.5 py-1.5 rounded-xl border border-slate-700/60">
+                <i class="fa-solid fa-gauge-high text-amber-400 text-xs" title="Netzlast / Prüf-Paketrate"></i>
+                <input type="range" id="stress-slider" min="1" max="100" value="15" class="w-20 accent-cyan-400 cursor-pointer">
+                <span class="text-[11px] font-mono font-bold text-cyan-400 min-w-[52px]" id="stress-val">15 Pkts/s</span>
+            </div>
+
+            <!-- Rückfall auf Startnetz (Standardnetz 1) -->
+            <button onclick="fallbackAllToStartConfig('Manueller Rückfall auf Standardnetz 1 (Starttopologie)')" class="px-2.5 py-1.5 text-xs font-mono rounded-lg bg-amber-950/50 text-amber-300 border border-amber-700/60 hover:bg-amber-900/60 transition flex items-center gap-1.5" title="Sicherer Rückfall aller Knoten auf Standardnetz 1 (Starttopologie)">
+                <i class="fa-solid fa-shield-halved text-amber-400"></i>
+                <span class="hidden sm:inline">Rückfall (Netz 1)</span>
+            </button>
+
+            <!-- Echtzeit Live Toggle -->
+            <button id="btn-toggle-sim" class="px-2.5 py-1.5 text-xs font-mono rounded-lg bg-cyan-600/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-600/30 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-pause text-cyan-400" id="sim-icon"></i>
+                <span id="sim-text">Echtzeit Aktiv</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace Container -->
+    <div class="flex-1 flex flex-col lg:flex-row relative overflow-hidden">
+        
+        <!-- Linker Bereich: Standardnetze, Betriebsmodus, Dijkstra, Drag-Editor & Gesamtlatenz -->
+        <div class="flex-1 flex flex-col min-w-0 border-r border-slate-800/60">
+            
+            <!-- STEUERUNGSLEISTE ZEILE 1: Standardnetze & Betriebsmodus -->
+            <div class="border-b border-slate-800/80 bg-slate-900/70 px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
+                
+                <!-- 1. Wählbare Standardnetze -->
+                <div class="flex items-center gap-1.5">
+                    <span class="text-slate-400 font-bold"><i class="fa-solid fa-diagram-project text-emerald-400 mr-1"></i>Solltopologie:</span>
+                    <select id="topology-preset" onchange="applyTopologyPreset(this.value)" class="bg-slate-950 border border-emerald-700/70 rounded-lg px-2 py-1 text-emerald-300 font-bold focus:outline-none focus:border-emerald-400 cursor-pointer">
+                        <option value="std_net_1">Standardnetz 1 (Startnetz • Baum)</option>
+                        <option value="std_net_2">Standardnetz 2 (Redundantes Mesh)</option>
+                        <option value="custom">Manuelle Solltopologie (Drag-Editor)</option>
+                    </select>
+                </div>
+
+                <!-- 2. Betriebsmodus: Version 1 (Feste Freigabe) vs. Ausbaustufe (Freie Optimierung) -->
+                <div class="flex items-center gap-1.5">
+                    <span class="text-slate-400 font-bold"><i class="fa-solid fa-layer-group text-cyan-400 mr-1"></i>Stufe:</span>
+                    <select id="operation-stage" onchange="changeOperationStage(this.value)" class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-cyan-300 focus:outline-none focus:border-cyan-500 cursor-pointer">
+                        <option value="v1_strict">Version 1: Freigegebene Soll-Links (≤ N)</option>
+                        <option value="v2_optimize">Ausbaustufe: Freie Optimierung (≤ N)</option>
+                    </select>
+                </div>
+
+                <!-- 3. Dijkstra Kriterium -->
+                <div class="flex items-center gap-1.5">
+                    <span class="text-slate-400 font-bold"><i class="fa-solid fa-route text-blue-400 mr-1"></i>Dijkstra:</span>
+                    <select id="dijkstra-criterion" class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-blue-300 focus:outline-none focus:border-blue-500 cursor-pointer">
+                        <option value="latency">RTT / Latenz minimieren (ms)</option>
+                        <option value="rssi">Verbindungsstärke maximieren (RSSI)</option>
+                        <option value="delivery">Zustellquote maximieren (%)</option>
+                        <option value="balanced">Multi-Metrik (RTT + RSSI + Zustellung)</option>
+                    </select>
+                </div>
+
+            </div>
+
+            <!-- STEUERUNGSLEISTE ZEILE 2: N-Grenze, Pilotsequenz-Intervall & Drag-Tools -->
+            <div class="border-b border-slate-800/80 bg-slate-900/40 px-4 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
+                
+                <div class="flex flex-wrap items-center gap-3">
+                    <!-- Nachbargrenze N -->
+                    <div class="flex items-center gap-1.5 bg-slate-950/70 px-2 py-1 rounded-lg border border-slate-800" title="Obergrenze N: Jeder Knoten darf höchstens N aktive direkte Nachbarn haben">
+                        <span class="text-slate-400">Max. Nachbarn (N):</span>
+                        <input type="number" id="max-partners-n" min="1" max="9" value="4" class="w-11 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-center text-amber-400 font-bold focus:outline-none focus:border-amber-500">
+                    </div>
+
+                    <!-- Periodische BER-Pilotsequenz Intervall -->
+                    <div class="flex items-center gap-1.5 bg-slate-950/70 px-2 py-1 rounded-lg border border-slate-800" title="Intervall der periodischen Pilotsequenz für die geplante BER-Erfassung">
+                        <i class="fa-solid fa-wave-square text-purple-400"></i>
+                        <span class="text-slate-400">BER-Pilot:</span>
+                        <select id="pilot-interval" onchange="updatePilotInterval(this.value)" class="bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-purple-300 font-bold focus:outline-none">
+                            <option value="0.5">alle 0,5 s</option>
+                            <option value="1.0" selected>alle 1,0 s</option>
+                            <option value="2.0">alle 2,0 s</option>
+                            <option value="5.0">alle 5,0 s</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Drag & Drop Modus Umschalter -->
+                <div class="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                    <button id="mode-connect" onclick="setDragMode('connect')" class="px-2 py-0.5 rounded bg-blue-600 text-white font-bold transition flex items-center gap-1" title="Ziehe von einem Knoten zum anderen, um eine Verbindung aufzubauen">
+                        <i class="fa-solid fa-link"></i> Verbinden
+                    </button>
+                    <button id="mode-move" onclick="setDragMode('move')" class="px-2 py-0.5 rounded text-slate-400 hover:text-slate-200 transition flex items-center gap-1" title="Knoten auf der Zeichenfläche frei verschieben">
+                        <i class="fa-solid fa-up-down-left-right"></i> Verschieben
+                    </button>
+                </div>
+            </div>
+
+            <!-- Statusleiste für Konfigurations-Version, ACK & Befristete Freigabe (Lease-Rückfall) -->
+            <div class="bg-slate-950/90 border-b border-slate-800/80 px-4 py-1.5 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-slate-400">Konfig:</span>
+                    <span id="config-version-badge" class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-700/60 font-bold">v1.0 (Standardnetz 1 • Startnetz)</span>
+                    <span id="lease-status-badge" class="hidden px-2 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-700/60" title="Befristete Freigabe außerhalb des Startnetzes. Ohne Erneuerung durch den Master fallen isolierte Knoten automatisch auf Standardnetz 1 zurück.">
+                        <i class="fa-solid fa-clock-rotate-left mr-1"></i>Freigabe-Lease: <span id="lease-timer-val">15s</span>
+                    </span>
+                    <span id="config-ack-status" class="text-slate-400 hidden sm:inline">Alle aktiven Knoten haben bestätigt (ACK)</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <label class="flex items-center gap-1.5 text-slate-300 cursor-pointer" title="Simuliert, ob die betroffenen Knoten den Konfigurationswechsel rechtzeitig bestätigen (ACK) oder ein Timeout zum Rückfall auf Standardnetz 1 führt">
+                        <input type="checkbox" id="simulate-ack-success" checked class="accent-emerald-400">
+                        <span>ACK-Bestätigung aktiv</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Network Topology SVG Canvas -->
+            <div class="relative flex-1 min-h-[410px] flex flex-col bg-slate-950/40 select-none" id="canvas-wrapper">
+                
+                <!-- 3-Ebenen-Legende & Bedienhinweise -->
+                <div class="absolute top-3 left-3 z-10 flex flex-col gap-1.5 text-[11px] font-mono pointer-events-none">
+                    <div class="glass-panel px-3 py-1.5 rounded-xl flex flex-wrap items-center gap-3 text-slate-300 shadow-lg">
+                        <span class="flex items-center gap-1.5 text-emerald-400"><span class="w-5 h-0.5 bg-emerald-400 inline-block"></span> Verbindung aktiv (grün & dünn)</span>
+                        <span class="flex items-center gap-1.5 text-rose-400"><span class="w-5 h-0.5 border-b-2 border-dashed border-rose-500 inline-block"></span> Ausgeschaltet (rot gestrichelt)</span>
+                        <span class="flex items-center gap-1.5 text-blue-400 font-bold"><span class="w-5 h-1.5 bg-blue-500 rounded-full shadow-[0_0_8px_#3b82f6] inline-block"></span> Dijkstra-Route</span>
+                        <span class="flex items-center gap-1.5 text-slate-400"><span class="w-4 h-0.5 border-b border-dotted border-slate-500 inline-block"></span> Hörbar</span>
+                    </div>
+                    <div class="bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-800/80 text-[10px] text-slate-300 w-fit">
+                        <i class="fa-solid fa-circle-info text-blue-400 mr-1"></i>
+                        <span id="drag-hint-text"><b>Ziehen</b> zwischen zwei beliebigen Knoten baut Verbindung auf • <b>Klick auf Verbindung</b> öffnet Untersuchung & Steuerung</span>
+                    </div>
+                </div>
+
+                <!-- View Filter Toggles -->
+                <div class="absolute top-3 right-3 z-10 flex flex-col items-end gap-1.5 text-[11px] font-mono">
+                    <label class="bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-800 text-slate-300 flex items-center gap-1.5 cursor-pointer" title="Zeigt physisch hörbare Funkkontakte im Hintergrund">
+                        <input type="checkbox" id="toggle-audible" class="accent-blue-500">
+                        <span>Hörbare Nachbarn (Scan)</span>
+                    </label>
+                </div>
+
+                <!-- VERBINDUNGS-INSPEKTOR POPUP (Untersuchen, Ausschalten, Löschen) -->
+                <div id="edge-action-popover" class="hidden absolute z-30 glass-panel border border-slate-600/90 rounded-xl p-3 shadow-2xl font-mono text-xs w-72">
+                    <div class="flex items-center justify-between border-b border-slate-700/80 pb-1.5 mb-2">
+                        <span class="font-bold text-slate-100" id="popover-edge-title">Verbindung 1 ↔ 4</span>
+                        <button onclick="closeEdgePopover()" class="text-slate-400 hover:text-white px-1"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <div class="space-y-1 text-[10px] text-slate-300 mb-2.5 bg-slate-950/70 p-2 rounded-lg border border-slate-800" id="popover-edge-details">
+                    </div>
+                    <div class="flex flex-col gap-1.5">
+                        <button id="popover-btn-toggle" onclick="popoverToggleCut()" class="w-full px-2.5 py-1.5 rounded-lg bg-amber-950/80 border border-amber-600/70 text-amber-200 hover:bg-amber-900 transition font-bold flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-power-off"></i>
+                            <span id="popover-toggle-text">Verbindung ausschalten</span>
+                        </button>
+                        <button id="popover-btn-delete" onclick="popoverDeleteEdge()" class="w-full px-2.5 py-1.5 rounded-lg bg-rose-950/80 border border-rose-600/70 text-rose-200 hover:bg-rose-900 transition font-bold flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-trash-can"></i>
+                            <span id="popover-delete-text">Verbindung komplett löschen</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- SVG Graph Wrapper -->
+                <div class="w-full h-full flex-1 flex items-center justify-center p-2">
+                    <svg id="network-svg" class="w-full h-full max-h-[470px]" viewBox="0 0 900 470" preserveAspectRatio="xMidYMid meet">
+                        <defs>
+                            <filter id="glow-gateway" x="-20%" y="-20%" width="140%" height="140%">
+                                <feGaussianBlur stdDeviation="6" result="blur" />
+                                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                            </filter>
+                            <!-- Kräftiger blauer Leucht-Filter für Dijkstra -->
+                            <filter id="glow-dijkstra-blue" x="-50%" y="-50%" width="200%" height="200%">
+                                <feGaussianBlur stdDeviation="5" result="blur1" />
+                                <feGaussianBlur stdDeviation="10" result="blur2" />
+                                <feMerge>
+                                    <feMergeNode in="blur2" />
+                                    <feMergeNode in="blur1" />
+                                    <feMergeNode in="SourceGraphic" />
+                                </feMerge>
+                            </filter>
+                        </defs>
+
+                        <!-- EDGES LAYER -->
+                        <g id="edges-layer"></g>
+
+                        <!-- TEMP DRAG LINE -->
+                        <line id="temp-drag-line" x1="0" y1="0" x2="0" y2="0" stroke="#10b981" stroke-width="3" stroke-dasharray="6,4" class="hidden pointer-events-none" />
+
+                        <!-- NODES LAYER -->
+                        <g id="nodes-layer"></g>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- Lower Widget: Permanent RTT Latency Graph for ALL 9 Nodes -->
+            <div class="h-44 border-t border-slate-800/80 p-3 glass-panel flex flex-col justify-between">
+                <div class="flex items-center justify-between mb-1">
+                    <div class="flex items-center space-x-2">
+                        <i class="fa-solid fa-chart-line text-blue-400"></i>
+                        <h3 class="text-xs font-bold font-mono tracking-wider text-slate-200 uppercase">Echtzeit-RTT zum Master (0) – Mehrsprung-Pfad</h3>
+                    </div>
+                    <span class="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">Runden-ID #<span id="chart-round-id">1</span></span>
+                </div>
+                <div class="flex-1 w-full relative min-h-0">
+                    <canvas id="allNodesLatencyChart"></canvas>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Rechter Hauptbereich: Knoten-Steuerung & Verbindungs-Untersuchung -->
+        <div class="w-full lg:w-[485px] glass-panel border-l border-slate-800/80 flex flex-col h-auto overflow-y-auto">
+            
+            <!-- Inspector Header -->
+            <div class="p-3.5 border-b border-slate-800/80 bg-slate-900/60 flex items-center justify-between">
+                <div class="flex items-center space-x-2.5">
+                    <div class="w-8 h-8 rounded-lg flex items-center justify-center font-mono font-bold text-base border" id="selected-icon">
+                        9
+                    </div>
+                    <div>
+                        <h2 class="font-bold text-sm text-slate-100 font-mono" id="selected-node-title">ESP32 Knoten 9</h2>
+                        <p class="text-[11px] text-slate-400 font-mono" id="selected-node-sub">MAC: 24:6F:28:AB:7C:09</p>
+                    </div>
+                </div>
+                <div class="text-right font-mono">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-950 text-blue-300 border border-blue-700/60 block" id="selected-status-badge">
+                        Online
+                    </span>
+                    <span class="text-[9px] text-slate-400 mt-0.5 block" id="selected-node-config-tag">Standardnetz 1</span>
+                </div>
+            </div>
+
+            <!-- Content Details -->
+            <div class="p-3.5 space-y-3 flex-1">
+                
+                <!-- VERBINDUNGS-INSPEKTOR IM SEITENPANEL (wenn eine Leitung angeklickt wurde) -->
+                <div id="sidebar-edge-inspector" class="hidden bg-blue-950/30 p-3 rounded-xl border border-blue-600/60 space-y-2 font-mono">
+                    <div class="flex items-center justify-between border-b border-blue-800/60 pb-1.5">
+                        <span class="text-xs font-bold text-blue-300" id="side-edge-title"><i class="fa-solid fa-magnifying-glass-chart mr-1.5"></i>Verbindung K1 ↔ K4</span>
+                        <button onclick="closeEdgePopover()" class="text-[10px] text-slate-400 hover:text-white">Schließen ✕</button>
+                    </div>
+                    <div class="grid grid-cols-3 gap-1.5 text-[10px]" id="side-edge-metrics">
+                    </div>
+                    <div class="flex gap-2 pt-1">
+                        <button id="side-btn-toggle" onclick="popoverToggleCut()" class="flex-1 px-2 py-1 rounded-lg bg-amber-950/80 border border-amber-600/70 text-amber-200 hover:bg-amber-900 text-[10px] font-bold">
+                            Ausschalten
+                        </button>
+                        <button id="side-btn-delete" onclick="popoverDeleteEdge()" class="flex-1 px-2 py-1 rounded-lg bg-rose-950/80 border border-rose-600/70 text-rose-200 hover:bg-rose-900 text-[10px] font-bold">
+                            Löschen
+                        </button>
+                    </div>
+                </div>
+
+                <!-- SEPARATE STÖRUNGS- & STATUS-STEUERUNG FÜR DIESEN KNOTEN -->
+                <div class="bg-slate-900/95 p-3 rounded-xl border border-slate-700/80 space-y-2.5 font-mono" id="node-fault-controls">
+                    <div class="text-[10px] font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+                        <span><i class="fa-solid fa-wrench text-amber-400 mr-1"></i>Ereignisse & Störungen (Knoten <span id="ctrl-node-num">9</span>)</span>
+                        <span class="text-[9px] text-slate-400">[Simulationsereignis]</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                        <!-- Toggle: Knoten komplett abschalten -->
+                        <button id="btn-toggle-node-power" onclick="toggleNodePower()" class="px-2.5 py-2 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1.5 bg-emerald-950/60 border-emerald-700/60 text-emerald-300 hover:bg-emerald-900/60">
+                            <i class="fa-solid fa-power-off"></i>
+                            <span id="txt-node-power">Knoten AN</span>
+                        </button>
+
+                        <!-- Toggle: Lokale Funkstörung an diesem Knoten -->
+                        <button id="btn-toggle-node-jam" onclick="toggleNodeInterference()" class="px-2.5 py-2 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1.5 bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-700">
+                            <i class="fa-solid fa-wave-square"></i>
+                            <span id="txt-node-jam">Funkstörung: AUS</span>
+                        </button>
+                    </div>
+
+                    <!-- Störungsstärke Slider -->
+                    <div id="jam-strength-box" class="hidden pt-1.5 border-t border-slate-800 space-y-1">
+                        <div class="flex justify-between text-[10px] text-amber-300">
+                            <span>Störungsintensität (Dämpfung):</span>
+                            <span id="jam-db-val">-20 dB</span>
+                        </div>
+                        <input type="range" id="jam-db-slider" min="5" max="40" step="5" value="20" class="w-full accent-amber-400 cursor-pointer">
+                    </div>
+                </div>
+
+                <!-- Sendeleistung & Zufallsbereich -->
+                <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-700/70 space-y-2 font-mono" id="node-tx-settings-box">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[10px] font-bold text-cyan-400 uppercase tracking-wider"><i class="fa-solid fa-tower-broadcast mr-1"></i>Sendeleistung (TX Power)</span>
+                        <span class="text-xs font-bold text-slate-100" id="tx-current-display">19.0 dBm</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <div class="flex justify-between text-[10px] text-slate-400">
+                                <span>Basis:</span>
+                                <span id="tx-base-val" class="text-slate-200">19 dBm</span>
+                            </div>
+                            <input type="range" id="tx-power-slider" min="2" max="20" step="1" value="19" class="w-full accent-cyan-400 cursor-pointer">
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-[10px] text-slate-400">
+                                <span>Zufall (±):</span>
+                                <span id="tx-jitter-val" class="text-amber-400">± 2 dBm</span>
+                            </div>
+                            <input type="range" id="tx-jitter-slider" min="0" max="6" step="1" value="2" class="w-full accent-amber-400 cursor-pointer">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MESSWERTE GEMÄSS KONZEPT V3 -->
+                <div class="space-y-1.5 font-mono">
+                    <div class="flex items-center justify-between text-[10px] text-slate-400">
+                        <span class="font-bold uppercase tracking-wider">Messwerte (Bericht #<span id="node-report-round">1</span>)</span>
+                        <label class="flex items-center gap-1 text-slate-400 cursor-pointer" title="Aktiviert die optionale Simulation für Goodput und Pilot-BER">
+                            <input type="checkbox" id="toggle-sim-placeholders" class="accent-blue-500">
+                            <span>Sim-Platzhalter (v2)</span>
+                        </label>
+                    </div>
+                    <div class="grid grid-cols-3 gap-1.5">
+                        <div class="bg-slate-900/90 p-2 rounded-xl border border-slate-800">
+                            <div class="text-[9px] text-slate-400">Pfad-RTT (Master)</div>
+                            <div class="text-xs font-bold text-amber-400 mt-0.5" id="val-latency">52 ms</div>
+                            <div class="text-[8px] text-slate-500" id="val-direct-rtt">1. Hop: -- ms</div>
+                        </div>
+                        <div class="bg-slate-900/90 p-2 rounded-xl border border-slate-800">
+                            <div class="text-[9px] text-slate-400">RSSI (1. Hop)</div>
+                            <div class="text-xs font-bold text-emerald-400 mt-0.5" id="val-rssi">-76 dBm</div>
+                            <div class="text-[8px] text-slate-500">Empfangspegel</div>
+                        </div>
+                        <div class="bg-slate-900/90 p-2 rounded-xl border border-slate-800">
+                            <div class="text-[9px] text-slate-400">Zustellquote</div>
+                            <div class="text-xs font-bold text-cyan-400 mt-0.5" id="val-delivery">99.2%</div>
+                            <div class="text-[8px] text-slate-500">Eindeutige Pakete</div>
+                        </div>
+                    </div>
+
+                    <!-- Platzhalter-Zeile für Durchsatz & BER -->
+                    <div class="grid grid-cols-2 gap-1.5">
+                        <div class="bg-slate-950/80 p-2 rounded-xl border border-dashed border-slate-800 flex items-center justify-between">
+                            <div>
+                                <div class="text-[9px] text-slate-500">Goodput / Durchsatz</div>
+                                <div class="text-[11px] font-bold text-slate-400 mt-0.5" id="val-throughput">n. v. (Platzhalter)</div>
+                            </div>
+                            <span class="text-[8px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-500 border border-slate-800">v2</span>
+                        </div>
+                        <div class="bg-slate-950/80 p-2 rounded-xl border border-dashed border-slate-800 flex items-center justify-between">
+                            <div>
+                                <div class="text-[9px] text-slate-500">Funk-BER (Pilot <span id="ber-pilot-label">1.0s</span>)</div>
+                                <div class="text-[11px] font-bold text-slate-400 mt-0.5" id="val-ber">n. v. (Platzhalter)</div>
+                            </div>
+                            <span class="text-[8px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-500 border border-slate-800">v2</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Aktive Dijkstra-Route (Hinweg zum Master) -->
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold font-mono text-blue-400 uppercase tracking-wider block">Leuchtende Dijkstra-Route (Hops: <span id="val-hop-count" class="text-blue-300">3</span>)</label>
+                    <div class="bg-slate-900/90 p-2 rounded-xl border border-blue-800/70 font-mono text-xs text-blue-300 flex items-center flex-wrap gap-1.5 shadow-inner" id="path-visualizer">
+                    </div>
+                </div>
+
+                <!-- EXAKTE VERBINDUNGSVERWALTUNG DIESES KNOTENS -->
+                <div class="space-y-1.5">
+                    <div class="flex items-center justify-between">
+                        <label class="text-[10px] font-bold font-mono text-slate-400 uppercase tracking-wider">Verbindungen von Knoten <span id="conn-node-num">9</span></label>
+                        <span class="text-[9px] font-mono text-emerald-400" id="partner-limit-status">Bestätigt: 2 / 4</span>
+                    </div>
+                    
+                    <!-- Schnell-Verbindung hinzufügen -->
+                    <div class="flex gap-1.5 font-mono text-xs" id="add-link-bar">
+                        <select id="select-new-neighbor" class="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 focus:outline-none focus:border-blue-500">
+                        </select>
+                        <button onclick="addConnectionFromDropdown()" class="px-2.5 py-1 rounded-lg bg-emerald-600/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600/30 transition font-bold">
+                            <i class="fa-solid fa-plus mr-1"></i>Verbinden
+                        </button>
+                    </div>
+
+                    <div class="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/50 font-mono text-xs">
+                        <table class="w-full text-left">
+                            <thead class="bg-slate-800/60 text-[9px] text-slate-400 uppercase">
+                                <tr>
+                                    <th class="p-1.5">Nachbar</th>
+                                    <th class="p-1.5">Zustand</th>
+                                    <th class="p-1.5">RSSI / Link-RTT</th>
+                                    <th class="p-1.5 text-right">Aktion</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-800/60 text-[10px]" id="neighbor-table-body">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- LIVE GRAPHS FOR SELECTED NODE -->
+                <div class="space-y-2 pt-1">
+                    <label class="text-[10px] font-bold font-mono text-slate-400 uppercase tracking-wider block">Live-Telemetrie (Knoten <span id="selected-node-num">9</span>)</label>
+                    
+                    <div class="bg-slate-900/80 p-2 rounded-xl border border-slate-800">
+                        <div class="flex items-center justify-between text-[10px] font-mono text-slate-400 mb-1">
+                            <span>Pfad-RTT zum Master (ms)</span>
+                            <span class="text-amber-400 font-bold" id="graph-latency-val">52 ms</span>
+                        </div>
+                        <div class="h-14">
+                            <canvas id="chartSelectedLatency"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-900/80 p-2 rounded-xl border border-slate-800">
+                        <div class="flex items-center justify-between text-[10px] font-mono text-slate-400 mb-1">
+                            <span>RSSI Empfangspegel (dBm)</span>
+                            <span class="text-emerald-400 font-bold" id="graph-rssi-val">-76 dBm</span>
+                        </div>
+                        <div class="h-14">
+                            <canvas id="chartSelectedRssi"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-900/80 p-2 rounded-xl border border-slate-800">
+                        <div class="flex items-center justify-between text-[10px] font-mono text-slate-400 mb-1">
+                            <span>Zustellquote (%)</span>
+                            <span class="text-cyan-400 font-bold" id="graph-delivery-val">99.2%</span>
+                        </div>
+                        <div class="h-14">
+                            <canvas id="chartSelectedDelivery"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Application Script Logic -->
+    <script>
+        const nodeColors = {
+            0: '#38bdf8',
+            1: '#10b981', 2: '#059669', 3: '#14b8a6',
+            4: '#f59e0b', 5: '#d97706', 6: '#eab308',
+            7: '#6366f1', 8: '#a855f7', 9: '#ef4444'
+        };
+
+        const defaultCoords = {
+            0: { x: 450, y: 48 },
+            1: { x: 180, y: 165 }, 2: { x: 450, y: 165 }, 3: { x: 720, y: 165 },
+            4: { x: 150, y: 300 }, 5: { x: 450, y: 300 }, 6: { x: 750, y: 300 },
+            7: { x: 200, y: 430 }, 8: { x: 450, y: 430 }, 9: { x: 700, y: 430 }
+        };
+
+        let nodeCoords = JSON.parse(JSON.stringify(defaultCoords));
+
+        // STANDARDNETZ 1: Festes Startnetz & eindeutiges Rückfallziel (Baum-Struktur)
+        const standardNet1Links = [
+            { u: 0, v: 1 }, { u: 0, v: 2 }, { u: 0, v: 3 },
+            { u: 1, v: 4 }, { u: 2, v: 5 }, { u: 3, v: 6 },
+            { u: 4, v: 7 }, { u: 5, v: 8 }, { u: 6, v: 9 }
+        ];
+
+        // STANDARDNETZ 2: Zweite vollständige Solltopologie (Redundantes Mesh mit Querverbindungen)
+        const standardNet2Links = [
+            { u: 0, v: 1 }, { u: 0, v: 2 }, { u: 0, v: 3 },
+            { u: 1, v: 2 }, { u: 2, v: 3 },
+            { u: 1, v: 4 }, { u: 2, v: 5 }, { u: 3, v: 6 },
+            { u: 4, v: 5 }, { u: 5, v: 6 },
+            { u: 4, v: 7 }, { u: 5, v: 8 }, { u: 6, v: 9 },
+            { u: 7, v: 8 }, { u: 8, v: 9 }
+        ];
+
+        // Physisch hörbare Funkumgebung (Basis-Scan)
+        const physicalAudiblePairs = [
+            [0,1], [0,2], [0,3],
+            [1,2], [2,3],
+            [1,4], [1,5], [2,4], [2,5], [2,6], [3,5], [3,6],
+            [4,5], [5,6],
+            [4,7], [4,8], [5,7], [5,8], [5,9], [6,8], [6,9],
+            [7,8], [8,9]
+        ];
+
+        // Solltopologie (vom Backend vorgegeben / per Drag & Drop erstellt) & Ausgeschaltete Leitungen
+        let targetSollLinks = [];
+        let cutLinksSet = new Set(); // "u-v" mit u < v
+        let nodesData = {};
+        let currentPreset = 'std_net_1';
+        let operationStage = 'v1_strict';
+        let configVersion = 'v1.0 (Standardnetz 1 • Startnetz)';
+
+        // Globale Simulations-Parameter
+        let selectedNodeId = 9;
+        let isSimulating = true;
+        let stressFactor = 15;
+        let maxPartnersN = 4;
+        let pilotIntervalSec = 1.0;
+        let dijkstraCriterion = 'latency';
+        let showAudible = false;
+        let showSimPlaceholders = false;
+        let roundCount = 0;
+        let currentLoopStep = 2;
+
+        // Drag & Drop State
+        let dragMode = 'connect';
+        let draggingNodeId = null;
+        let isDragging = false;
+
+        // Popover State (Untersuchung einer angeklickten Verbindung)
+        let activePopoverEdge = null;
+
+        // Berechnete Netzdaten
+        let computedEdges = [];
+        let nodeResults = {};
+
+        let globalChart, chartSelectedLatency, chartSelectedRssi, chartSelectedDelivery;
+
+        function linkKey(u, v) {
+            return `${Math.min(u, v)}-${Math.max(u, v)}`;
+        }
+
+        function initializeNetworkOnce() {
+            nodeCoords = JSON.parse(JSON.stringify(defaultCoords));
+            currentPreset = 'std_net_1';
+            targetSollLinks = JSON.parse(JSON.stringify(standardNet1Links));
+            cutLinksSet.clear();
+            configVersion = 'v1.0 (Standardnetz 1 • Startnetz)';
+            document.getElementById('topology-preset').value = 'std_net_1';
+
+            nodesData = {
+                0: { id: 0, num: 0, name: 'Master / Zentralrechner (0)', ip: '192.168.1.1', mac: '00:1A:2B:3C:4D:00', txBase: 20, txJitter: 0, txActual: 20, offline: false, interferenceDb: 0, onFallbackNet1: true, leaseRemaining: 15, lastReportRound: 0 },
+                1: { id: 1, num: 1, name: 'ESP32 Knoten 1', ip: '192.168.1.101', mac: '24:6F:28:AB:7C:01', txBase: 15, txJitter: 1, txActual: 15, offline: false, interferenceDb: 0, onFallbackNet1: true, leaseRemaining: 15, lastReportRound: 0 },
+                2: { id: 2, num: 2, name: 'ESP32 Knoten 2', ip: '192.168.1.102', mac: '24:6F:28:AB:7C:02', txBase: 17, txJitter: 1, txActual: 17, offline: false, interferenceDb: 0, onFallbackNet1: true, leaseRemaining: 15, lastReportRound: 0 },
+                3: { id: 3, num: 3, name: 'ESP32 Knoten 3', ip: '192.168.1.103', mac: '24:6F:28:AB:7C:03', txBase: 15, txJitter: 2, txActual: 15, offline: false, interferenceDb: 0, onFallbackNet1: true, leaseRemaining: 15, lastReportRound: 0 },
+                4: { id: 4, num: 4, name: 'ESP32 Knoten 4', ip: '192.168.1.104', mac: '24:6F:28:AB:7C:04', txBase: 14, txJitter: 2, txActual: 14, offline: false, interferenceDb: 0, onFallbackNet1: true, leaseRemaining: 15, lastReportRound: 0 },
+                5: { id: 5, num: 5, name: 'ESP32 Knoten 5', ip: '192.168.1.105', mac: '24:6F:28:AB:7C:05', txBase: 18, txJitter: 1, txActual: 18, offline: false, interferenceDb: 0, onFallbackNet1: true, leaseRemaining: 15, lastReportRound: 0 },
+                6: { id: 6, num: 6, name: 'ESP32 Knoten 6', ip: '192.168.1.106', mac: '24:6F:28:AB:7C:06', txBase: 15, txJitter: 2, txActual: 15, offline: false, interferenceDb: 0, onFallbackNet1: true, leaseRemaining: 15, lastReportRound: 0 },
+                7: { id: 7, num: 7, name: 'ESP32 Knoten 7', ip: '192.168.1.107', mac: '24:6F:28:AB:7C:07', txBase: 16, txJitter: 2, txActual: 16, offline: false, interferenceDb: 0, onFallbackNet1: true, leaseRemaining: 15, lastReportRound: 0 },
+                8: { id: 8, num: 8, name: 'ESP32 Knoten 8', ip: '192.168.1.108', mac: '24:6F:28:AB:7C:08', txBase: 15, txJitter: 1, txActual: 15, offline: false, interferenceDb: 0, onFallbackNet1: true, leaseRemaining: 15, lastReportRound: 0 },
+                9: { id: 9, num: 9, name: 'ESP32 Knoten 9', ip: '192.168.1.109', mac: '24:6F:28:AB:7C:09', txBase: 19, txJitter: 2, txActual: 19, offline: false, interferenceDb: 0, onFallbackNet1: true, leaseRemaining: 15, lastReportRound: 0 }
+            };
+            roundCount = 0;
+            currentLoopStep = 2;
+            closeEdgePopover();
+            updateConfigBanner('v1.0 (Standardnetz 1 • Startnetz)', 'emerald', 'Startnetz aktiv (eindeutiges Rückfallziel)', false);
+        }
+
+        function fallbackAllToStartConfig(reasonText = 'Rückfall auf Standardnetz 1 (Starttopologie)') {
+            currentPreset = 'std_net_1';
+            targetSollLinks = JSON.parse(JSON.stringify(standardNet1Links));
+            cutLinksSet.clear();
+            for (let i = 0; i <= 9; i++) {
+                nodesData[i].onFallbackNet1 = true;
+                nodesData[i].leaseRemaining = 15;
+            }
+            document.getElementById('topology-preset').value = 'std_net_1';
+            configVersion = 'v1.0 (Rückfall • Standardnetz 1)';
+            closeEdgePopover();
+            updateConfigBanner(configVersion, 'amber', reasonText, false);
+            runMeasurementAndDijkstraRound();
+            updateUI();
+        }
+
+        function applyTopologyPreset(preset) {
+            closeEdgePopover();
+            const ackEnabled = document.getElementById('simulate-ack-success').checked;
+            if (!ackEnabled && preset !== 'std_net_1') {
+                fallbackAllToStartConfig('FEHLER: Keine ACK-Bestätigung der Knoten → Automatischer Rückfall auf Standardnetz 1!');
+                return;
+            }
+
+            currentPreset = preset;
+            for (let i = 0; i <= 9; i++) {
+                nodesData[i].onFallbackNet1 = (preset === 'std_net_1');
+                nodesData[i].leaseRemaining = 15;
+            }
+
+            if (preset === 'std_net_1') {
+                targetSollLinks = JSON.parse(JSON.stringify(standardNet1Links));
+                configVersion = 'v1.0 (Standardnetz 1 • Startnetz)';
+                updateConfigBanner(configVersion, 'emerald', 'Standardnetz 1 aktiv & bestätigt (ACK)', false);
+            } else if (preset === 'std_net_2') {
+                targetSollLinks = JSON.parse(JSON.stringify(standardNet2Links));
+                configVersion = 'v2.0 (Standardnetz 2 • Redundanz)';
+                updateConfigBanner(configVersion, 'cyan', 'Standardnetz 2 aktiv (Lease-Überwachung durch Master)', true);
+            } else {
+                configVersion = 'v3.x (Manuelle Solltopologie)';
+                updateConfigBanner(configVersion, 'cyan', 'Manuelle Solltopologie aktiv & bestätigt (ACK)', true);
+            }
+            runMeasurementAndDijkstraRound();
+            updateUI();
+        }
+
+        function changeOperationStage(stage) {
+            operationStage = stage;
+            runMeasurementAndDijkstraRound();
+            updateUI();
+        }
+
+        function updatePilotInterval(val) {
+            pilotIntervalSec = parseFloat(val);
+            document.getElementById('ber-pilot-label').innerText = `${pilotIntervalSec.toFixed(1)}s`;
+            runMeasurementAndDijkstraRound();
+            updateUI();
+        }
+
+        function updateConfigBanner(versionText, color, statusMsg, showLease) {
+            const badge = document.getElementById('config-version-badge');
+            const status = document.getElementById('config-ack-status');
+            const leaseBadge = document.getElementById('lease-status-badge');
+            badge.innerText = versionText;
+            status.innerText = statusMsg;
+
+            if (showLease) {
+                leaseBadge.classList.remove('hidden');
+            } else {
+                leaseBadge.classList.add('hidden');
+            }
+
+            if (color === 'amber') {
+                badge.className = 'px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-600 font-bold';
+                status.className = 'text-amber-300 font-bold';
+            } else if (color === 'cyan') {
+                badge.className = 'px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-700 font-bold';
+                status.className = 'text-slate-300';
+            } else {
+                badge.className = 'px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-700/60 font-bold';
+                status.className = 'text-slate-400';
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            initializeNetworkOnce();
+            buildSvgNodes();
+            setupSvgDragAndDrop();
+            initGlobalLatencyChart();
+            initSelectedNodeCharts();
+            runMeasurementAndDijkstraRound();
+            selectNode(9);
+            startRealtimeControlLoop();
+
+            document.getElementById('btn-toggle-sim').addEventListener('click', toggleSimulation);
+
+            document.getElementById('stress-slider').addEventListener('input', (e) => {
+                stressFactor = parseInt(e.target.value);
+                document.getElementById('stress-val').innerText = `${stressFactor} Pkts/s`;
+                runMeasurementAndDijkstraRound();
+                updateUI();
+            });
+
+            document.getElementById('dijkstra-criterion').addEventListener('change', (e) => {
+                dijkstraCriterion = e.target.value;
+                runMeasurementAndDijkstraRound();
+                updateUI();
+            });
+
+            document.getElementById('max-partners-n').addEventListener('change', (e) => {
+                maxPartnersN = Math.max(1, Math.min(9, parseInt(e.target.value) || 4));
+                runMeasurementAndDijkstraRound();
+                updateUI();
+            });
+
+            document.getElementById('toggle-audible').addEventListener('change', (e) => {
+                showAudible = e.target.checked;
+                renderTopologySVG();
+            });
+
+            document.getElementById('toggle-sim-placeholders').addEventListener('change', (e) => {
+                showSimPlaceholders = e.target.checked;
+                updateUI();
+            });
+
+            document.getElementById('tx-power-slider').addEventListener('input', (e) => {
+                if (selectedNodeId === 0) return;
+                nodesData[selectedNodeId].txBase = parseInt(e.target.value);
+                document.getElementById('tx-base-val').innerText = `${e.target.value} dBm`;
+                runMeasurementAndDijkstraRound();
+                updateUI();
+            });
+
+            document.getElementById('tx-jitter-slider').addEventListener('input', (e) => {
+                if (selectedNodeId === 0) return;
+                nodesData[selectedNodeId].txJitter = parseInt(e.target.value);
+                document.getElementById('tx-jitter-val').innerText = `± ${e.target.value} dBm`;
+                runMeasurementAndDijkstraRound();
+                updateUI();
+            });
+
+            document.getElementById('jam-db-slider').addEventListener('input', (e) => {
+                const val = parseInt(e.target.value);
+                nodesData[selectedNodeId].interferenceDb = val;
+                document.getElementById('jam-db-val').innerText = `-${val} dB`;
+                runMeasurementAndDijkstraRound();
+                updateUI();
+            });
+
+            document.getElementById('network-svg').addEventListener('click', (e) => {
+                if (!e.target.closest('.edge-hitarea')) {
+                    closeEdgePopover();
+                }
+            });
+        });
+
+        function setDragMode(mode) {
+            dragMode = mode;
+            closeEdgePopover();
+            const btnConnect = document.getElementById('mode-connect');
+            const btnMove = document.getElementById('mode-move');
+            const hint = document.getElementById('drag-hint-text');
+
+            if (mode === 'connect') {
+                btnConnect.className = 'px-2 py-0.5 rounded bg-blue-600 text-white font-bold transition flex items-center gap-1';
+                btnMove.className = 'px-2 py-0.5 rounded text-slate-400 hover:text-slate-200 transition flex items-center gap-1';
+                hint.innerHTML = `<b>Ziehen</b> zwischen zwei beliebigen Knoten baut Verbindung auf • <b>Klick auf Verbindung</b> öffnet Untersuchung & Steuerung`;
+            } else {
+                btnMove.className = 'px-2 py-0.5 rounded bg-blue-600 text-white font-bold transition flex items-center gap-1';
+                btnConnect.className = 'px-2 py-0.5 rounded text-slate-400 hover:text-slate-200 transition flex items-center gap-1';
+                hint.innerHTML = `<b>Ziehe einen Knoten</b>, um seine Position auf dem Spielfeld zu verschieben (ändert Distanz & RSSI!)`;
+            }
+        }
+
+        function buildSvgNodes() {
+            const nodesLayer = document.getElementById('nodes-layer');
+            nodesLayer.innerHTML = '';
+
+            for (let id = 0; id <= 9; id++) {
+                const pos = nodeCoords[id];
+                const color = nodeColors[id];
+                const isMaster = id === 0;
+
+                const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                g.setAttribute('id', `node-${id}`);
+                g.setAttribute('transform', `translate(${pos.x}, ${pos.y})`);
+                g.setAttribute('class', 'node-draggable');
+                g.setAttribute('data-id', id);
+
+                const jamRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                jamRing.setAttribute('class', 'node-jam-ring hidden');
+                jamRing.setAttribute('cx', '0');
+                jamRing.setAttribute('cy', '0');
+                jamRing.setAttribute('r', isMaster ? '34' : '30');
+                jamRing.setAttribute('fill', 'rgba(245, 158, 11, 0.15)');
+                jamRing.setAttribute('stroke', '#f59e0b');
+                jamRing.setAttribute('stroke-width', '2');
+                jamRing.setAttribute('stroke-dasharray', '4,3');
+                g.appendChild(jamRing);
+
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('class', 'node-halo');
+                circle.setAttribute('cx', '0');
+                circle.setAttribute('cy', '0');
+                circle.setAttribute('r', isMaster ? '26' : '22');
+                circle.setAttribute('fill', '#0f172a');
+                circle.setAttribute('stroke', color);
+                circle.setAttribute('stroke-width', '3');
+                if (isMaster) circle.setAttribute('filter', 'url(#glow-gateway)');
+                g.appendChild(circle);
+
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', '0');
+                text.setAttribute('y', '6');
+                text.setAttribute('text-anchor', 'middle');
+                text.setAttribute('fill', color);
+                text.setAttribute('font-size', isMaster ? '18' : '16');
+                text.setAttribute('font-family', 'JetBrains Mono');
+                text.setAttribute('font-weight', 'bold');
+                text.textContent = id;
+                g.appendChild(text);
+
+                const badge = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                badge.setAttribute('class', 'node-tx-badge');
+                badge.setAttribute('x', '0');
+                badge.setAttribute('y', isMaster ? '-32' : '34');
+                badge.setAttribute('text-anchor', 'middle');
+                badge.setAttribute('fill', isMaster ? '#38bdf8' : '#94a3b8');
+                badge.setAttribute('font-size', isMaster ? '10' : '9');
+                badge.setAttribute('font-family', 'JetBrains Mono');
+                badge.textContent = isMaster ? 'MASTER (0)' : `${nodesData[id].txBase} dBm`;
+                g.appendChild(badge);
+
+                nodesLayer.appendChild(g);
+            }
+        }
+
+        function setupSvgDragAndDrop() {
+            const svg = document.getElementById('network-svg');
+            const tempLine = document.getElementById('temp-drag-line');
+
+            function getSvgCoords(evt) {
+                const pt = svg.createSVGPoint();
+                pt.x = evt.clientX;
+                pt.y = evt.clientY;
+                return pt.matrixTransform(svg.getScreenCTM().inverse());
+            }
+
+            function findNodeAtSvgCoords(coords) {
+                let closestId = null;
+                let minDist = 42; // großzügiger Fangradius für einfaches Drag & Drop
+                for (let id = 0; id <= 9; id++) {
+                    const pos = nodeCoords[id];
+                    const d = Math.hypot(pos.x - coords.x, pos.y - coords.y);
+                    if (d <= minDist) {
+                        minDist = d;
+                        closestId = id;
+                    }
+                }
+                return closestId;
+            }
+
+            svg.addEventListener('mousedown', (e) => {
+                const nodeGroup = e.target.closest('.node-draggable');
+                if (!nodeGroup) return;
+                e.preventDefault();
+                closeEdgePopover();
+
+                const id = parseInt(nodeGroup.getAttribute('data-id'));
+                draggingNodeId = id;
+                isDragging = false;
+
+                if (dragMode === 'connect') {
+                    const startPos = nodeCoords[id];
+                    tempLine.setAttribute('x1', startPos.x);
+                    tempLine.setAttribute('y1', startPos.y);
+                    tempLine.setAttribute('x2', startPos.x);
+                    tempLine.setAttribute('y2', startPos.y);
+                    tempLine.classList.remove('hidden');
+                }
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (draggingNodeId === null) return;
+                isDragging = true;
+                const coords = getSvgCoords(e);
+
+                if (dragMode === 'connect') {
+                    const hoverTarget = findNodeAtSvgCoords(coords);
+                    if (hoverTarget !== null && hoverTarget !== draggingNodeId) {
+                        tempLine.setAttribute('x2', nodeCoords[hoverTarget].x);
+                        tempLine.setAttribute('y2', nodeCoords[hoverTarget].y);
+                        tempLine.setAttribute('stroke', '#10b981');
+                        tempLine.setAttribute('stroke-width', '4');
+                    } else {
+                        tempLine.setAttribute('x2', coords.x);
+                        tempLine.setAttribute('y2', coords.y);
+                        tempLine.setAttribute('stroke', '#38bdf8');
+                        tempLine.setAttribute('stroke-width', '2.5');
+                    }
+                } else if (dragMode === 'move') {
+                    const clampedX = Math.max(40, Math.min(860, coords.x));
+                    const clampedY = Math.max(35, Math.min(435, coords.y));
+                    nodeCoords[draggingNodeId] = { x: clampedX, y: clampedY };
+                    const g = document.getElementById(`node-${draggingNodeId}`);
+                    if (g) g.setAttribute('transform', `translate(${clampedX}, ${clampedY})`);
+                    runMeasurementAndDijkstraRound();
+                    renderTopologySVG();
+                }
+            });
+
+            window.addEventListener('mouseup', (e) => {
+                if (draggingNodeId === null) return;
+
+                if (dragMode === 'connect') {
+                    tempLine.classList.add('hidden');
+                    const coords = getSvgCoords(e);
+                    const targetId = findNodeAtSvgCoords(coords);
+
+                    if (isDragging && targetId !== null && targetId !== draggingNodeId) {
+                        // Verbindung zwischen beliebigen zwei Knoten aufbauen!
+                        createOrEnableSollLink(draggingNodeId, targetId);
+                    } else if (!isDragging) {
+                        selectNode(draggingNodeId);
+                    }
+                } else if (dragMode === 'move') {
+                    if (!isDragging) {
+                        selectNode(draggingNodeId);
+                    } else {
+                        updateUI();
+                    }
+                }
+
+                draggingNodeId = null;
+                isDragging = false;
+            });
+        }
+
+        // BUGFIX v8: Beim manuellen Verbinden per Drag & Drop übernehmen ALLE Knoten
+        // die neue manuelle Solltopologie (kein Knoten bleibt auf onFallbackNet1 hängen!)
+        function createOrEnableSollLink(u, v) {
+            const ackEnabled = document.getElementById('simulate-ack-success').checked;
+            if (!ackEnabled) {
+                fallbackAllToStartConfig('FEHLER: Keine ACK-Bestätigung → Rückfall auf Standardnetz 1!');
+                return;
+            }
+
+            const k = linkKey(u, v);
+            cutLinksSet.delete(k);
+
+            const existsInSoll = targetSollLinks.some(l => linkKey(l.u, l.v) === k);
+            if (!existsInSoll) {
+                targetSollLinks.push({ u: Math.min(u, v), v: Math.max(u, v) });
+            }
+
+            // Alle Knoten aktivieren die neue Solltopologie
+            for (let i = 0; i <= 9; i++) {
+                nodesData[i].onFallbackNet1 = false;
+                nodesData[i].leaseRemaining = 15;
+            }
+
+            // Falls der Knoten durch das neue Link das bisherige N überschreitet, N automatisch anpassen,
+            // damit die gerade gezogene Verbindung garantiert sofort grün & aktiv wird!
+            const degU = targetSollLinks.filter(l => !cutLinksSet.has(linkKey(l.u, l.v)) && (l.u === u || l.v === u)).length;
+            const degV = targetSollLinks.filter(l => !cutLinksSet.has(linkKey(l.u, l.v)) && (l.u === v || l.v === v)).length;
+            const neededN = Math.max(u === 0 ? 0 : degU, v === 0 ? 0 : degV);
+            if (neededN > maxPartnersN) {
+                maxPartnersN = neededN;
+                document.getElementById('max-partners-n').value = maxPartnersN;
+            }
+
+            currentPreset = 'custom';
+            document.getElementById('topology-preset').value = 'custom';
+            configVersion = 'v3.x (Manuelle Solltopologie)';
+            updateConfigBanner(configVersion, 'cyan', `Verbindung K${u} ↔ K${v} aufgebaut & bestätigt (ACK)`, true);
+
+            runMeasurementAndDijkstraRound();
+            updateUI();
+        }
+
+        function openEdgePopover(evt, edgeObj) {
+            evt.stopPropagation();
+            activePopoverEdge = { u: edgeObj.u, v: edgeObj.v };
+            updateEdgeInspectorPanels(edgeObj);
+
+            const wrapper = document.getElementById('canvas-wrapper');
+            const rect = wrapper.getBoundingClientRect();
+            const popover = document.getElementById('edge-action-popover');
+
+            let left = evt.clientX - rect.left + 12;
+            let top = evt.clientY - rect.top + 12;
+            if (left + 295 > rect.width) left = rect.width - 300;
+            if (top + 190 > rect.height) top = rect.height - 195;
+
+            popover.style.left = `${Math.max(10, left)}px`;
+            popover.style.top = `${Math.max(10, top)}px`;
+            popover.classList.remove('hidden');
+            renderTopologySVG();
+        }
+
+        function updateEdgeInspectorPanels(edgeObj) {
+            const labelU = edgeObj.u === 0 ? 'Master (0)' : 'Knoten ' + edgeObj.u;
+            const labelV = edgeObj.v === 0 ? 'Master (0)' : 'Knoten ' + edgeObj.v;
+            const titleText = `${labelU} ↔ ${labelV}`;
+
+            document.getElementById('popover-edge-title').innerText = titleText;
+            document.getElementById('side-edge-title').innerHTML = `<i class="fa-solid fa-magnifying-glass-chart mr-1.5"></i>${titleText}`;
+
+            let statusLabel = 'Hörbar (nicht verbunden)';
+            let statusColor = 'text-slate-400';
+            if (edgeObj.cut) {
+                statusLabel = 'Ausgeschaltet (rot gestrichelt)';
+                statusColor = 'text-rose-400 font-bold';
+            } else if (edgeObj.nodeOffline) {
+                statusLabel = 'Knoten abgeschaltet';
+                statusColor = 'text-rose-400';
+            } else if (edgeObj.isRoutingActive) {
+                statusLabel = 'Aktiv + Dijkstra-Route (Blau)';
+                statusColor = 'text-blue-400 font-bold';
+            } else if (edgeObj.isAllowedPartner) {
+                statusLabel = 'Verbunden (Grün)';
+                statusColor = 'text-emerald-400 font-bold';
+            } else if (edgeObj.inSoll) {
+                statusLabel = `Blockiert durch N=${maxPartnersN}`;
+                statusColor = 'text-amber-400';
+            }
+
+            document.getElementById('popover-edge-details').innerHTML = `
+                <div class="flex justify-between"><span>Zustand:</span><span class="${statusColor}">${statusLabel}</span></div>
+                <div class="flex justify-between"><span>RSSI (Pegel):</span><span class="text-slate-100">${edgeObj.isBroken ? '--' : edgeObj.rssi + ' dBm'}</span></div>
+                <div class="flex justify-between"><span>Direkte Link-RTT:</span><span class="text-amber-300">${edgeObj.isBroken ? '--' : edgeObj.rtt + ' ms'}</span></div>
+                <div class="flex justify-between"><span>Zustellquote:</span><span class="text-cyan-300">${edgeObj.isBroken ? '--' : edgeObj.deliveryRate + ' %'}</span></div>
+                <div class="flex justify-between"><span>Distanz (Karte):</span><span class="text-slate-300">${edgeObj.distanceMeters} m</span></div>
+            `;
+
+            // Auch im rechten Seitenpanel anzeigen!
+            const sideBox = document.getElementById('sidebar-edge-inspector');
+            sideBox.classList.remove('hidden');
+            document.getElementById('side-edge-metrics').innerHTML = `
+                <div class="bg-slate-950/80 p-1.5 rounded border border-slate-800">
+                    <div class="text-[8px] text-slate-400">RSSI</div>
+                    <div class="font-bold text-emerald-400">${edgeObj.isBroken ? '--' : edgeObj.rssi + ' dBm'}</div>
+                </div>
+                <div class="bg-slate-950/80 p-1.5 rounded border border-slate-800">
+                    <div class="text-[8px] text-slate-400">Link-RTT</div>
+                    <div class="font-bold text-amber-400">${edgeObj.isBroken ? '--' : edgeObj.rtt + ' ms'}</div>
+                </div>
+                <div class="bg-slate-950/80 p-1.5 rounded border border-slate-800">
+                    <div class="text-[8px] text-slate-400">Zustellung</div>
+                    <div class="font-bold text-cyan-400">${edgeObj.isBroken ? '--' : edgeObj.deliveryRate + '%'}</div>
+                </div>
+            `;
+
+            const btnToggle = document.getElementById('popover-btn-toggle');
+            const txtToggle = document.getElementById('popover-toggle-text');
+            const sideBtnToggle = document.getElementById('side-btn-toggle');
+
+            if (edgeObj.cut) {
+                btnToggle.className = 'w-full px-2.5 py-1.5 rounded-lg bg-emerald-950/80 border border-emerald-600/70 text-emerald-200 hover:bg-emerald-900 transition font-bold flex items-center justify-center gap-1.5';
+                txtToggle.innerText = 'Verbindung einschalten';
+                sideBtnToggle.innerText = 'Einschalten';
+            } else {
+                btnToggle.className = 'w-full px-2.5 py-1.5 rounded-lg bg-amber-950/80 border border-amber-600/70 text-amber-200 hover:bg-amber-900 transition font-bold flex items-center justify-center gap-1.5';
+                txtToggle.innerText = 'Verbindung ausschalten';
+                sideBtnToggle.innerText = 'Ausschalten';
+            }
+        }
+
+        function closeEdgePopover() {
+            activePopoverEdge = null;
+            document.getElementById('edge-action-popover').classList.add('hidden');
+            document.getElementById('sidebar-edge-inspector').classList.add('hidden');
+            renderTopologySVG();
+        }
+
+        function popoverToggleCut() {
+            if (!activePopoverEdge) return;
+            toggleLinkCut(activePopoverEdge.u, activePopoverEdge.v);
+            const updatedEdge = computedEdges.find(e => linkKey(e.u, e.v) === linkKey(activePopoverEdge.u, activePopoverEdge.v));
+            if (updatedEdge) updateEdgeInspectorPanels(updatedEdge);
+        }
+
+        function popoverDeleteEdge() {
+            if (!activePopoverEdge) return;
+            removeLinkCompletely(activePopoverEdge.u, activePopoverEdge.v);
+            closeEdgePopover();
+        }
+
+        // BUGFIX v8: Ausschalten einer beliebigen Verbindung (auch einer bisher nur hörbaren)
+        // übernimmt sie in die Solltopologie und markiert sie als "cut" -> sofort rot gestrichelt!
+        function toggleLinkCut(u, v) {
+            const k = linkKey(u, v);
+            const existsInSoll = targetSollLinks.some(l => linkKey(l.u, l.v) === k);
+            if (!existsInSoll) {
+                targetSollLinks.push({ u: Math.min(u, v), v: Math.max(u, v) });
+            }
+
+            if (cutLinksSet.has(k)) {
+                cutLinksSet.delete(k);
+            } else {
+                cutLinksSet.add(k);
+            }
+            runMeasurementAndDijkstraRound();
+            updateUI();
+        }
+
+        function removeLinkCompletely(u, v) {
+            const ackEnabled = document.getElementById('simulate-ack-success').checked;
+            if (!ackEnabled) {
+                fallbackAllToStartConfig('FEHLER: Keine ACK-Bestätigung → Rückfall auf Standardnetz 1!');
+                return;
+            }
+            const k = linkKey(u, v);
+            targetSollLinks = targetSollLinks.filter(l => linkKey(l.u, l.v) !== k);
+            cutLinksSet.delete(k);
+
+            for (let i = 0; i <= 9; i++) {
+                nodesData[i].onFallbackNet1 = false;
+                nodesData[i].leaseRemaining = 15;
+            }
+            currentPreset = 'custom';
+            document.getElementById('topology-preset').value = 'custom';
+            configVersion = 'v3.x (Manuelle Solltopologie)';
+            updateConfigBanner(configVersion, 'cyan', `Verbindung K${u} ↔ K${v} gelöscht`, true);
+
+            runMeasurementAndDijkstraRound();
+            updateUI();
+        }
+
+        function addConnectionFromDropdown() {
+            const select = document.getElementById('select-new-neighbor');
+            const targetId = parseInt(select.value);
+            if (!isNaN(targetId) && targetId !== selectedNodeId) {
+                createOrEnableSollLink(selectedNodeId, targetId);
+            }
+        }
+
+        function toggleNodePower() {
+            if (selectedNodeId === 0) return;
+            nodesData[selectedNodeId].offline = !nodesData[selectedNodeId].offline;
+            runMeasurementAndDijkstraRound();
+            updateUI();
+        }
+
+        function toggleNodeInterference() {
+            const n = nodesData[selectedNodeId];
+            if (n.interferenceDb > 0) {
+                n.interferenceDb = 0;
+            } else {
+                n.interferenceDb = parseInt(document.getElementById('jam-db-slider').value) || 20;
+            }
+            runMeasurementAndDijkstraRound();
+            updateUI();
+        }
+
+        // ECHTZEIT-MESSUNG, SOLL/IST-ABGLEICH & DIJKSTRA BERECHNUNG
+        function runMeasurementAndDijkstraRound() {
+            roundCount++;
+            document.getElementById('round-counter').innerText = roundCount;
+            document.getElementById('chart-round-id').innerText = roundCount;
+
+            for (let i = 1; i <= 9; i++) {
+                const n = nodesData[i];
+                const jitter = n.txJitter > 0 ? (Math.random() * 2 * n.txJitter - n.txJitter) : 0;
+                n.txActual = Math.max(1, Math.min(20, n.txBase + jitter));
+                const badge = document.querySelector(`#node-${i} .node-tx-badge`);
+                if (badge) {
+                    if (n.offline) {
+                        badge.textContent = 'OFFLINE';
+                        badge.setAttribute('fill', '#ef4444');
+                    } else if (n.interferenceDb > 0) {
+                        badge.textContent = `STÖRUNG (-${n.interferenceDb}dB)`;
+                        badge.setAttribute('fill', '#f59e0b');
+                    } else if (n.onFallbackNet1 && currentPreset !== 'std_net_1') {
+                        badge.textContent = `RÜCKFALL (N1)`;
+                        badge.setAttribute('fill', '#fbbf24');
+                    } else {
+                        badge.textContent = `${n.txActual.toFixed(1)} dBm`;
+                        badge.setAttribute('fill', '#94a3b8');
+                    }
+                }
+            }
+
+            // Alle physisch hörbaren + in Solltopologie definierten Paare sammeln
+            const allPairsMap = new Map();
+            physicalAudiblePairs.forEach(([u, v]) => {
+                allPairsMap.set(linkKey(u, v), { u: Math.min(u, v), v: Math.max(u, v) });
+            });
+            targetSollLinks.forEach(l => {
+                allPairsMap.set(linkKey(l.u, l.v), { u: Math.min(l.u, l.v), v: Math.max(l.u, l.v) });
+            });
+            standardNet1Links.forEach(l => {
+                allPairsMap.set(linkKey(l.u, l.v), { u: Math.min(l.u, l.v), v: Math.max(l.u, l.v) });
+            });
+
+            const sollKeys = new Set(targetSollLinks.map(l => linkKey(l.u, l.v)));
+            const net1Keys = new Set(standardNet1Links.map(l => linkKey(l.u, l.v)));
+
+            const stressPenalty = (stressFactor - 10) * 0.35;
+            const pilotLoadPenalty = (1.0 / pilotIntervalSec) * 0.3;
+            computedEdges = [];
+
+            allPairsMap.forEach((pair, k) => {
+                const uNode = nodesData[pair.u];
+                const vNode = nodesData[pair.v];
+                const p1 = nodeCoords[pair.u];
+                const p2 = nodeCoords[pair.v];
+
+                const pixelDist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                const distanceMeters = Math.round(pixelDist * 0.12);
+                const distFactor = Math.max(0.6, pixelDist / 260);
+                const isCut = cutLinksSet.has(k);
+                const isBroken = isCut || uNode.offline || vNode.offline;
+
+                const uUsesNet1 = uNode.onFallbackNet1;
+                const vUsesNet1 = vNode.onFallbackNet1;
+                const inSollForU = uUsesNet1 ? net1Keys.has(k) : sollKeys.has(k);
+                const inSollForV = vUsesNet1 ? net1Keys.has(k) : sollKeys.has(k);
+                const inSollBoth = inSollForU && inSollForV;
+
+                const avgTx = (uNode.txActual + vNode.txActual) / 2;
+                const interferencePenalty = uNode.interferenceDb + vNode.interferenceDb;
+
+                const rssi = Math.round(-44 - (distFactor * 16) + (avgTx - 15) * 1.4 - interferencePenalty + (Math.random() * 2.5 - 1.25));
+                const snr = Math.max(1, Math.round(rssi + 96 - (stressPenalty * 0.2)));
+                const rtt = Math.max(3, Math.round((distFactor * 8) + Math.max(0, (-65 - rssi) * 0.65) + stressPenalty + pilotLoadPenalty + (interferencePenalty * 1.2)));
+                const deliveryRate = Math.max(40, Math.min(100, parseFloat((100 - (Math.max(0, 30 - snr) * 0.45) - (stressFactor * 0.06)).toFixed(1))));
+
+                const simThroughput = Math.max(8, Math.round(320 - (distFactor * 45) + (snr * 2.5) - (stressFactor * 0.8) - (interferencePenalty * 3.5)));
+                const simBer = Math.max(0.01, parseFloat(((Math.max(0, 32 - snr) * 0.18) + (stressFactor * 0.02)).toFixed(2)));
+
+                computedEdges.push({
+                    u: pair.u, v: pair.v,
+                    key: k,
+                    distanceMeters,
+                    cut: isCut,
+                    nodeOffline: uNode.offline || vNode.offline,
+                    isBroken,
+                    inSoll: inSollBoth,
+                    rssi, rtt, deliveryRate,
+                    simThroughput, simBer,
+                    isAllowedPartner: false,
+                    isRoutingActive: false
+                });
+            });
+
+            // Nachbargrenze N & Freigaberegel
+            const degreeCount = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0 };
+
+            const candidateEdges = computedEdges.filter(e => {
+                if (e.isBroken) return false;
+                if (operationStage === 'v1_strict') return e.inSoll;
+                return true;
+            }).sort((a, b) => {
+                if (a.inSoll !== b.inSoll) return a.inSoll ? -1 : 1;
+                return b.rssi - a.rssi;
+            });
+
+            candidateEdges.forEach(e => {
+                const limitU = e.u === 0 ? 9 : maxPartnersN;
+                const limitV = e.v === 0 ? 9 : maxPartnersN;
+                if (degreeCount[e.u] < limitU && degreeCount[e.v] < limitV) {
+                    e.isAllowedPartner = true;
+                    degreeCount[e.u]++;
+                    degreeCount[e.v]++;
+                }
+            });
+
+            // Dijkstra auf bestätigten Partner-Kanten
+            function getEdgeCost(e) {
+                if (dijkstraCriterion === 'latency') return e.rtt;
+                if (dijkstraCriterion === 'rssi') return Math.max(1, 115 + e.rssi);
+                if (dijkstraCriterion === 'delivery') return Math.max(0.5, (101 - e.deliveryRate) * 5);
+                return e.rtt + Math.max(0, (-60 - e.rssi)) + ((100 - e.deliveryRate) * 2);
+            }
+
+            const dist = { 0: 0 };
+            const prev = {};
+            const unvisited = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+            for (let i = 1; i <= 9; i++) dist[i] = Infinity;
+
+            const routingEdges = computedEdges.filter(e => !e.isBroken && e.isAllowedPartner);
+
+            while (unvisited.size > 0) {
+                let u = null;
+                unvisited.forEach(node => {
+                    if (u === null || dist[node] < dist[u]) u = node;
+                });
+                if (u === null || dist[u] === Infinity) break;
+                unvisited.delete(u);
+
+                routingEdges.forEach(e => {
+                    let neighbor = null;
+                    if (e.u === u) neighbor = e.v;
+                    else if (e.v === u) neighbor = e.u;
+                    if (neighbor !== null && unvisited.has(neighbor)) {
+                        const alt = dist[u] + getEdgeCost(e);
+                        if (alt < dist[neighbor]) {
+                            dist[neighbor] = alt;
+                            prev[neighbor] = { node: u, edge: e };
+                        }
+                    }
+                });
+            }
+
+            // Routen & Befristete Freigabe (Lease-Timer für abgetrennte Knoten)
+            nodeResults = {};
+            let minActiveLease = 15;
+            let anyNodeOnNonStartNet = false;
+
+            for (let i = 1; i <= 9; i++) {
+                const path = [];
+                let curr = i;
+                let totalRtt = 0;
+                let firstHopRtt = 0;
+                let pathDelivery = 1.0;
+                let minThroughput = 999;
+                let totalBer = 0;
+                let lastRssi = -99;
+
+                if (!nodesData[i].offline && prev[i] !== undefined) {
+                    while (curr !== undefined) {
+                        path.unshift(curr);
+                        if (prev[curr]) {
+                            const edge = prev[curr].edge;
+                            edge.isRoutingActive = true;
+                            totalRtt += edge.rtt;
+                            pathDelivery *= (edge.deliveryRate / 100);
+                            minThroughput = Math.min(minThroughput, edge.simThroughput);
+                            totalBer += edge.simBer;
+                            if (curr === i) {
+                                lastRssi = edge.rssi;
+                                firstHopRtt = edge.rtt;
+                            }
+                            curr = prev[curr].node;
+                        } else {
+                            curr = undefined;
+                        }
+                    }
+                }
+
+                const reachable = path.length > 1 && path[0] === 0;
+
+                if (reachable) {
+                    nodesData[i].lastReportRound = roundCount;
+                    nodesData[i].leaseRemaining = 15;
+                } else if (!nodesData[i].offline && !nodesData[i].onFallbackNet1) {
+                    nodesData[i].leaseRemaining = Math.max(0, nodesData[i].leaseRemaining - 1);
+                    if (nodesData[i].leaseRemaining === 0) {
+                        nodesData[i].onFallbackNet1 = true;
+                    }
+                }
+
+                if (!nodesData[i].onFallbackNet1 && !nodesData[i].offline) {
+                    anyNodeOnNonStartNet = true;
+                    minActiveLease = Math.min(minActiveLease, nodesData[i].leaseRemaining);
+                }
+
+                nodeResults[i] = {
+                    reachable,
+                    bestPath: reachable ? path : [i],
+                    hopCount: reachable ? path.length - 1 : 0,
+                    rtt: reachable ? totalRtt : 0,
+                    firstHopRtt: reachable ? firstHopRtt : 0,
+                    rssi: lastRssi,
+                    deliveryRate: reachable ? parseFloat((pathDelivery * 100).toFixed(1)) : 0,
+                    simThroughput: minThroughput === 999 ? 0 : minThroughput,
+                    simBer: parseFloat(totalBer.toFixed(2))
+                };
+            }
+
+            if (anyNodeOnNonStartNet) {
+                document.getElementById('lease-timer-val').innerText = `${minActiveLease}s`;
+            }
+
+            // Wenn gerade ein Verbindungs-Popover offen ist, seine Live-Werte aktualisieren
+            if (activePopoverEdge) {
+                const liveEdge = computedEdges.find(e => linkKey(e.u, e.v) === linkKey(activePopoverEdge.u, activePopoverEdge.v));
+                if (liveEdge) updateEdgeInspectorPanels(liveEdge);
+            }
+
+            if (globalChart) {
+                for (let i = 1; i <= 9; i++) {
+                    globalChart.data.datasets[i-1].data.shift();
+                    globalChart.data.datasets[i-1].data.push(nodeResults[i].reachable ? nodeResults[i].rtt : null);
+                }
+                globalChart.update();
+            }
+        }
+
+        // SVG TOPOLOGIE ZEICHNEN:
+        // - Grün & dünn: aktive bestehende Verbindung
+        // - Rot gestrichelt: ausgeschaltete Verbindung
+        // - Blau leuchtend: Dijkstra-Route
+        function renderTopologySVG() {
+            const edgesLayer = document.getElementById('edges-layer');
+            edgesLayer.innerHTML = '';
+
+            const selectedPath = (selectedNodeId !== 0 && nodeResults[selectedNodeId]) ? nodeResults[selectedNodeId].bestPath : [];
+
+            computedEdges.forEach(e => {
+                // Nur relevante Verbindungen zeichnen (aktive, Soll-Links, ausgeschaltete, oder optional hörbare)
+                if (!e.isRoutingActive && !e.isAllowedPartner && !e.inSoll && !e.cut && !showAudible) return;
+
+                const p1 = nodeCoords[e.u];
+                const p2 = nodeCoords[e.v];
+                const isPopoverTarget = activePopoverEdge && ((activePopoverEdge.u === e.u && activePopoverEdge.v === e.v) || (activePopoverEdge.u === e.v && activePopoverEdge.v === e.u));
+
+                if (e.cut) {
+                    // AUSGESCHALTET -> ROT GESTRICHELT
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', p1.x);
+                    line.setAttribute('y1', p1.y);
+                    line.setAttribute('x2', p2.x);
+                    line.setAttribute('y2', p2.y);
+                    line.setAttribute('stroke', '#ef4444');
+                    line.setAttribute('stroke-width', isPopoverTarget ? '3.5' : '2');
+                    line.setAttribute('stroke-dasharray', '6,5');
+                    line.setAttribute('opacity', '0.9');
+                    edgesLayer.appendChild(line);
+
+                    const midX = (p1.x + p2.x) / 2;
+                    const midY = (p1.y + p2.y) / 2;
+                    const xMark = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    xMark.setAttribute('x', midX);
+                    xMark.setAttribute('y', midY + 4);
+                    xMark.setAttribute('text-anchor', 'middle');
+                    xMark.setAttribute('fill', '#ef4444');
+                    xMark.setAttribute('font-size', '12');
+                    xMark.setAttribute('font-family', 'JetBrains Mono');
+                    xMark.setAttribute('font-weight', 'bold');
+                    xMark.textContent = '✕';
+                    edgesLayer.appendChild(xMark);
+                } else if (e.nodeOffline) {
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', p1.x);
+                    line.setAttribute('y1', p1.y);
+                    line.setAttribute('x2', p2.x);
+                    line.setAttribute('y2', p2.y);
+                    line.setAttribute('stroke', '#334155');
+                    line.setAttribute('stroke-width', '1.2');
+                    line.setAttribute('stroke-dasharray', '2,4');
+                    line.setAttribute('opacity', '0.25');
+                    edgesLayer.appendChild(line);
+                } else if (e.isRoutingActive) {
+                    // DIJKSTRA-VERBINDUNG -> BLAU LEUCHTEND
+                    let isSelectedEdge = false;
+                    for (let i = 0; i < selectedPath.length - 1; i++) {
+                        if ((selectedPath[i] === e.u && selectedPath[i+1] === e.v) || (selectedPath[i] === e.v && selectedPath[i+1] === e.u)) {
+                            isSelectedEdge = true;
+                            break;
+                        }
+                    }
+
+                    // 1. Äußerer blauer Leucht-Halo
+                    const haloLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    haloLine.setAttribute('x1', p1.x);
+                    haloLine.setAttribute('y1', p1.y);
+                    haloLine.setAttribute('x2', p2.x);
+                    haloLine.setAttribute('y2', p2.y);
+                    haloLine.setAttribute('stroke', isSelectedEdge ? '#3b82f6' : '#2563eb');
+                    haloLine.setAttribute('stroke-width', isSelectedEdge ? '11' : '8');
+                    haloLine.setAttribute('stroke-linecap', 'round');
+                    haloLine.setAttribute('opacity', isSelectedEdge ? '0.5' : '0.32');
+                    haloLine.setAttribute('filter', 'url(#glow-dijkstra-blue)');
+                    edgesLayer.appendChild(haloLine);
+
+                    // 2. Kräftig leuchtende blaue Hauptlinie
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', p1.x);
+                    line.setAttribute('y1', p1.y);
+                    line.setAttribute('x2', p2.x);
+                    line.setAttribute('y2', p2.y);
+                    line.setAttribute('stroke', isSelectedEdge ? '#60a5fa' : '#3b82f6');
+                    line.setAttribute('stroke-width', isSelectedEdge ? '4.5' : '3');
+                    line.setAttribute('stroke-linecap', 'round');
+                    line.setAttribute('opacity', '1.0');
+                    edgesLayer.appendChild(line);
+                } else if (e.isAllowedPartner) {
+                    // BESTEHENDE VERBINDUNG -> GRÜN UND DÜNN (durchgezogen, klar erkennbar)
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', p1.x);
+                    line.setAttribute('y1', p1.y);
+                    line.setAttribute('x2', p2.x);
+                    line.setAttribute('y2', p2.y);
+                    line.setAttribute('stroke', isPopoverTarget ? '#fbbf24' : '#34d399');
+                    line.setAttribute('stroke-width', isPopoverTarget ? '3' : '1.5');
+                    line.setAttribute('opacity', '0.85');
+                    edgesLayer.appendChild(line);
+                } else {
+                    // Hörbarer Hintergrund-Nachbar (oder > N)
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', p1.x);
+                    line.setAttribute('y1', p1.y);
+                    line.setAttribute('x2', p2.x);
+                    line.setAttribute('y2', p2.y);
+                    line.setAttribute('stroke', isPopoverTarget ? '#fbbf24' : '#475569');
+                    line.setAttribute('stroke-width', isPopoverTarget ? '2.5' : '1');
+                    line.setAttribute('stroke-dasharray', '2,4');
+                    line.setAttribute('opacity', '0.35');
+                    edgesLayer.appendChild(line);
+                }
+
+                // Klickbare Hit-Area für jede Verbindung
+                const hitLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                hitLine.setAttribute('x1', p1.x);
+                hitLine.setAttribute('y1', p1.y);
+                hitLine.setAttribute('x2', p2.x);
+                hitLine.setAttribute('y2', p2.y);
+                hitLine.setAttribute('stroke', 'transparent');
+                hitLine.setAttribute('stroke-width', '16');
+                hitLine.setAttribute('class', 'edge-hitarea');
+                hitLine.innerHTML = `<title>Klicken zum Untersuchen / Ausschalten / Löschen (${e.u} ↔ ${e.v})</title>`;
+                hitLine.addEventListener('click', (evt) => {
+                    openEdgePopover(evt, e);
+                });
+                edgesLayer.appendChild(hitLine);
+            });
+
+            // Knoten-Darstellung aktualisieren
+            for (let i = 0; i <= 9; i++) {
+                const group = document.getElementById(`node-${i}`);
+                if (!group) continue;
+                const circle = group.querySelector('.node-halo');
+                const jamRing = group.querySelector('.node-jam-ring');
+                const n = nodesData[i];
+
+                if (n.offline) {
+                    group.style.opacity = '0.35';
+                    circle.setAttribute('stroke', '#ef4444');
+                } else {
+                    group.style.opacity = '1.0';
+                    circle.setAttribute('stroke', nodeColors[i]);
+                }
+
+                if (n.interferenceDb > 0 && !n.offline) {
+                    jamRing.classList.remove('hidden');
+                } else {
+                    jamRing.classList.add('hidden');
+                }
+
+                circle.setAttribute('stroke-width', selectedNodeId === i ? '6' : '3');
+            }
+        }
+
+        function selectNode(id) {
+            selectedNodeId = id;
+            updateUI();
+        }
+
+        function updateUI() {
+            renderTopologySVG();
+            const nData = nodesData[selectedNodeId];
+            const nColor = nodeColors[selectedNodeId];
+
+            document.getElementById('selected-node-title').innerText = nData.name;
+            document.getElementById('selected-node-num').innerText = nData.num;
+            document.getElementById('ctrl-node-num').innerText = nData.num;
+            document.getElementById('conn-node-num').innerText = nData.num;
+            document.getElementById('selected-node-sub').innerText = `MAC: ${nData.mac} | IP: ${nData.ip}`;
+            document.getElementById('node-report-round').innerText = nData.lastReportRound || roundCount;
+
+            const cfgTag = document.getElementById('selected-node-config-tag');
+            if (nData.onFallbackNet1) {
+                cfgTag.innerText = currentPreset === 'std_net_1' ? 'Standardnetz 1' : 'Rückfall: Standardnetz 1';
+                cfgTag.className = currentPreset === 'std_net_1' ? 'text-[9px] text-emerald-400 mt-0.5 block' : 'text-[9px] text-amber-400 font-bold mt-0.5 block';
+            } else {
+                cfgTag.innerText = `Sollnetz aktiv (Lease: ${nData.leaseRemaining}s)`;
+                cfgTag.className = 'text-[9px] text-cyan-400 mt-0.5 block';
+            }
+
+            const iconContainer = document.getElementById('selected-icon');
+            iconContainer.innerText = nData.num;
+            iconContainer.style.color = nColor;
+            iconContainer.style.borderColor = nColor;
+            iconContainer.style.backgroundColor = `${nColor}15`;
+
+            const btnPower = document.getElementById('btn-toggle-node-power');
+            const txtPower = document.getElementById('txt-node-power');
+            if (selectedNodeId === 0) {
+                btnPower.disabled = true;
+                btnPower.className = 'px-2.5 py-2 rounded-lg border text-xs font-bold opacity-40 cursor-not-allowed flex items-center justify-center gap-1.5 bg-slate-800 border-slate-700 text-slate-400';
+                txtPower.innerText = 'Master (Immer AN)';
+            } else {
+                btnPower.disabled = false;
+                if (nData.offline) {
+                    btnPower.className = 'px-2.5 py-2 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1.5 bg-rose-950/80 border-rose-600 text-rose-300 hover:bg-rose-900/80';
+                    txtPower.innerText = 'Knoten AUS (Starten)';
+                } else {
+                    btnPower.className = 'px-2.5 py-2 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1.5 bg-emerald-950/60 border-emerald-700/60 text-emerald-300 hover:bg-emerald-900/60';
+                    txtPower.innerText = 'Knoten AN';
+                }
+            }
+
+            const btnJam = document.getElementById('btn-toggle-node-jam');
+            const txtJam = document.getElementById('txt-node-jam');
+            const jamBox = document.getElementById('jam-strength-box');
+            if (nData.interferenceDb > 0) {
+                btnJam.className = 'px-2.5 py-2 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1.5 bg-amber-950/80 border-amber-500 text-amber-300 hover:bg-amber-900/80';
+                txtJam.innerText = `Störung: AN (-${nData.interferenceDb}dB)`;
+                jamBox.classList.remove('hidden');
+                document.getElementById('jam-db-slider').value = nData.interferenceDb;
+                document.getElementById('jam-db-val').innerText = `-${nData.interferenceDb} dB`;
+            } else {
+                btnJam.className = 'px-2.5 py-2 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1.5 bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-700';
+                txtJam.innerText = 'Funkstörung: AUS';
+                jamBox.classList.add('hidden');
+            }
+
+            const txBox = document.getElementById('node-tx-settings-box');
+            if (selectedNodeId === 0) {
+                txBox.style.opacity = '0.5';
+                document.getElementById('tx-current-display').innerText = '20.0 dBm (Master)';
+            } else {
+                txBox.style.opacity = '1.0';
+                document.getElementById('tx-power-slider').value = nData.txBase;
+                document.getElementById('tx-base-val').innerText = `${nData.txBase} dBm`;
+                document.getElementById('tx-jitter-slider').value = nData.txJitter;
+                document.getElementById('tx-jitter-val').innerText = `± ${nData.txJitter} dBm`;
+                document.getElementById('tx-current-display').innerText = `${nData.txActual.toFixed(1)} dBm`;
+            }
+
+            // Dropdown für neue Verbindungen (alle Knoten 0..9 wählbar!)
+            const selectNeighbor = document.getElementById('select-new-neighbor');
+            const currentVal = selectNeighbor.value;
+            selectNeighbor.innerHTML = '';
+            const sollConnectedIds = new Set(targetSollLinks.filter(l => l.u === selectedNodeId || l.v === selectedNodeId).map(l => l.u === selectedNodeId ? l.v : l.u));
+            for (let id = 0; id <= 9; id++) {
+                if (id !== selectedNodeId && !sollConnectedIds.has(id)) {
+                    const opt = document.createElement('option');
+                    opt.value = id;
+                    opt.textContent = id === 0 ? 'Master (Knoten 0)' : `ESP32 Knoten ${id}`;
+                    selectNeighbor.appendChild(opt);
+                }
+            }
+            if (currentVal && [...selectNeighbor.options].some(o => o.value === currentVal)) {
+                selectNeighbor.value = currentVal;
+            }
+
+            // Verbindungstabelle (zeigt Soll-Verbindungen + hörbare Scan-Nachbarn, klickbar zum Untersuchen!)
+            const tbody = document.getElementById('neighbor-table-body');
+            tbody.innerHTML = '';
+            const myLinks = computedEdges.filter(e => (e.u === selectedNodeId || e.v === selectedNodeId) && (e.inSoll || e.isAllowedPartner || e.cut || showAudible));
+            const allowedCount = myLinks.filter(e => !e.isBroken && e.isAllowedPartner).length;
+            const limitMax = selectedNodeId === 0 ? 9 : maxPartnersN;
+            document.getElementById('partner-limit-status').innerText = `Aktiv: ${allowedCount} / ${limitMax}`;
+
+            myLinks.forEach(e => {
+                const other = e.u === selectedNodeId ? e.v : e.u;
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-800/60 cursor-pointer';
+                tr.onclick = (evt) => {
+                    if (!evt.target.closest('button')) {
+                        activePopoverEdge = { u: e.u, v: e.v };
+                        updateEdgeInspectorPanels(e);
+                        renderTopologySVG();
+                    }
+                };
+
+                let statusTag = `<span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">Hörbar</span>`;
+                if (e.cut) {
+                    statusTag = `<span class="px-1.5 py-0.5 rounded bg-rose-950 text-rose-400 border border-rose-700/50 font-bold">Ausgeschaltet</span>`;
+                } else if (e.nodeOffline) {
+                    statusTag = `<span class="px-1.5 py-0.5 rounded bg-slate-900 text-slate-500">Knoten AUS</span>`;
+                } else if (e.isRoutingActive) {
+                    statusTag = `<span class="px-1.5 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-600/60 font-bold">Dijkstra (Blau)</span>`;
+                } else if (e.isAllowedPartner) {
+                    statusTag = `<span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-700/50">Verbunden (Grün)</span>`;
+                } else if (e.inSoll) {
+                    statusTag = `<span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-400 border border-amber-700/50">Blockiert (>N)</span>`;
+                }
+
+                tr.innerHTML = `
+                    <td class="p-1.5 font-bold text-slate-200">${other === 0 ? 'Master (0)' : 'Knoten ' + other}</td>
+                    <td class="p-1.5">${statusTag}</td>
+                    <td class="p-1.5 text-slate-300">${e.isBroken ? '--' : `${e.rssi} dBm / ${e.rtt}ms`}</td>
+                    <td class="p-1.5 text-right space-x-1">
+                        <button onclick="toggleLinkCut(${e.u}, ${e.v})" class="px-1.5 py-0.5 rounded border ${e.cut ? 'bg-emerald-950/70 border-emerald-700 text-emerald-300' : 'bg-amber-950/70 border-amber-700 text-amber-300'}" title="${e.cut ? 'Verbindung einschalten' : 'Verbindung ausschalten'}">
+                            <i class="fa-solid ${e.cut ? 'fa-power-off' : 'fa-link-slash'}"></i>
+                        </button>
+                        ${e.inSoll ? `<button onclick="removeLinkCompletely(${e.u}, ${e.v})" class="px-1.5 py-0.5 rounded bg-rose-950/60 border border-rose-800/60 text-rose-300 hover:bg-rose-900" title="Verbindung löschen"><i class="fa-solid fa-trash-can"></i></button>` : `<button onclick="createOrEnableSollLink(${e.u}, ${e.v})" class="px-1.5 py-0.5 rounded bg-emerald-950/60 border border-emerald-800/60 text-emerald-300 hover:bg-emerald-900" title="Verbindung aufbauen"><i class="fa-solid fa-plus"></i></button>`}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            if (selectedNodeId === 0) {
+                document.getElementById('selected-status-badge').innerText = 'Master (Seriell)';
+                document.getElementById('val-latency').innerText = '0 ms';
+                document.getElementById('val-direct-rtt').innerText = 'Serielles Backend';
+                document.getElementById('val-rssi').innerText = 'Master';
+                document.getElementById('val-delivery').innerText = '100%';
+                document.getElementById('val-throughput').innerText = showSimPlaceholders ? 'Seriell (Sim)' : 'n. v. (Platzhalter)';
+                document.getElementById('val-ber').innerText = showSimPlaceholders ? '0.0% (Sim)' : 'n. v. (Platzhalter)';
+                document.getElementById('val-hop-count').innerText = '0';
+                document.getElementById('path-visualizer').innerHTML = `<span class="text-blue-400">Zentraler Master-Knoten (Serielle Schnittstelle zum Backend)</span>`;
+                return;
+            }
+
+            const res = nodeResults[selectedNodeId];
+            if (!res) return;
+
+            document.getElementById('selected-status-badge').innerText = nData.offline ? 'ABGESCHALTET' : (res.reachable ? `Online (${res.hopCount} Hops)` : 'Isoliert (Kein Masterpfad)');
+            document.getElementById('val-latency').innerText = res.reachable ? `${res.rtt} ms` : '∞ (veraltet)';
+            document.getElementById('val-direct-rtt').innerText = res.reachable ? `1. Hop: ${res.firstHopRtt} ms` : '1. Hop: --';
+            document.getElementById('val-rssi').innerText = res.reachable ? `${res.rssi} dBm` : '--';
+            document.getElementById('val-delivery').innerText = res.reachable ? `${res.deliveryRate}%` : '0%';
+            document.getElementById('val-hop-count').innerText = res.hopCount;
+
+            const elThru = document.getElementById('val-throughput');
+            const elBer = document.getElementById('val-ber');
+            if (showSimPlaceholders && res.reachable) {
+                elThru.innerText = `${res.simThroughput} KB/s (Sim)`;
+                elThru.className = 'text-[11px] font-bold text-cyan-400 mt-0.5';
+                elBer.innerText = `${res.simBer}% (Sim)`;
+                elBer.className = 'text-[11px] font-bold text-purple-400 mt-0.5';
+            } else {
+                elThru.innerText = 'n. v. (Platzhalter)';
+                elThru.className = 'text-[11px] font-bold text-slate-400 mt-0.5';
+                elBer.innerText = 'n. v. (Platzhalter)';
+                elBer.className = 'text-[11px] font-bold text-slate-400 mt-0.5';
+            }
+
+            const pathContainer = document.getElementById('path-visualizer');
+            pathContainer.innerHTML = '';
+            if (nData.offline) {
+                pathContainer.innerHTML = `<span class="text-rose-400"><i class="fa-solid fa-power-off mr-1"></i>Knoten ist abgeschaltet.</span>`;
+            } else if (res.reachable) {
+                res.bestPath.forEach((stepNum, idx) => {
+                    const stepColor = nodeColors[stepNum] || '#38bdf8';
+                    const badge = document.createElement('span');
+                    badge.className = 'px-2 py-0.5 rounded border font-mono font-bold text-xs';
+                    badge.style.backgroundColor = `${stepColor}20`;
+                    badge.style.borderColor = `${stepColor}80`;
+                    badge.style.color = stepColor;
+                    badge.innerText = stepNum === 0 ? 'Master (0)' : `Knoten ${stepNum}`;
+                    pathContainer.appendChild(badge);
+
+                    if (idx < res.bestPath.length - 1) {
+                        const arrow = document.createElement('i');
+                        arrow.className = 'fa-solid fa-arrow-right text-blue-400 text-[10px]';
+                        pathContainer.appendChild(arrow);
+                    }
+                });
+            } else {
+                pathContainer.innerHTML = `<span class="text-amber-400"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Kein Weg zum Master! Ziehe per Drag & Drop eine Verbindung zum Netz.</span>`;
+            }
+
+            if (chartSelectedLatency && res.reachable) {
+                document.getElementById('graph-latency-val').innerText = `${res.rtt} ms`;
+                document.getElementById('graph-rssi-val').innerText = `${res.rssi} dBm`;
+                document.getElementById('graph-delivery-val').innerText = `${res.deliveryRate}%`;
+
+                chartSelectedLatency.data.datasets[0].borderColor = nColor;
+                chartSelectedLatency.data.datasets[0].data.shift();
+                chartSelectedLatency.data.datasets[0].data.push(res.rtt);
+                chartSelectedLatency.update();
+
+                chartSelectedRssi.data.datasets[0].data.shift();
+                chartSelectedRssi.data.datasets[0].data.push(res.rssi);
+                chartSelectedRssi.update();
+
+                chartSelectedDelivery.data.datasets[0].data.shift();
+                chartSelectedDelivery.data.datasets[0].data.push(res.deliveryRate);
+                chartSelectedDelivery.update();
+            }
+        }
+
+        function startRealtimeControlLoop() {
+            setInterval(() => {
+                if (!isSimulating) return;
+
+                document.querySelectorAll('.loop-step').forEach(el => {
+                    const step = parseInt(el.getAttribute('data-step'));
+                    if (step === currentLoopStep) {
+                        el.className = 'loop-step px-1.5 py-0.5 rounded bg-blue-500/25 text-blue-300 border border-blue-500/50 font-bold';
+                    } else {
+                        el.className = 'loop-step px-1.5 py-0.5 rounded text-slate-500';
+                    }
+                });
+
+                if (currentLoopStep === 5) {
+                    runMeasurementAndDijkstraRound();
+                    updateUI();
+                }
+
+                currentLoopStep = currentLoopStep >= 6 ? 2 : currentLoopStep + 1;
+            }, 160);
+        }
+
+        function toggleSimulation() {
+            isSimulating = !isSimulating;
+            const icon = document.getElementById('sim-icon');
+            const text = document.getElementById('sim-text');
+            if (isSimulating) {
+                icon.className = 'fa-solid fa-pause text-cyan-400';
+                text.innerText = 'Echtzeit Aktiv';
+            } else {
+                icon.className = 'fa-solid fa-play text-amber-400';
+                text.innerText = 'Pausiert';
+            }
+        }
+
+        function initGlobalLatencyChart() {
+            const ctx = document.getElementById('allNodesLatencyChart').getContext('2d');
+            const datasets = Array.from({length: 9}, (_, i) => {
+                const nId = i + 1;
+                return {
+                    label: `K${nId}`,
+                    data: Array(25).fill(20),
+                    borderColor: nodeColors[nId],
+                    backgroundColor: 'transparent',
+                    tension: 0.3,
+                    borderWidth: 2,
+                    pointRadius: 0
+                };
+            });
+
+            globalChart = new Chart(ctx, {
+                type: 'line',
+                data: { labels: Array.from({length: 25}, (_, i) => `-${25 - i}`), datasets },
+                options: {
+                    responsive: true, maintainAspectRatio: false, animation: false,
+                    plugins: { legend: { display: true, position: 'top', labels: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 9 }, boxWidth: 8 } } },
+                    scales: {
+                        x: { grid: { color: 'rgba(255, 255, 255, 0.04)' }, ticks: { color: '#64748b', font: { size: 9 } } },
+                        y: { grid: { color: 'rgba(255, 255, 255, 0.04)' }, ticks: { color: '#64748b', font: { size: 9 } }, min: 0, suggestedMax: 80 }
+                    }
+                }
+            });
+        }
+
+        function initSelectedNodeCharts() {
+            chartSelectedLatency = new Chart(document.getElementById('chartSelectedLatency').getContext('2d'), {
+                type: 'line',
+                data: { labels: Array(20).fill(''), datasets: [{ data: Array(20).fill(30), borderColor: nodeColors[9], backgroundColor: 'rgba(239, 68, 68, 0.1)', fill: true, tension: 0.3, borderWidth: 2, pointRadius: 0 }] },
+                options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { ticks: { color: '#64748b', font: { size: 8 } }, min: 0, suggestedMax: 60 } } }
+            });
+
+            chartSelectedRssi = new Chart(document.getElementById('chartSelectedRssi').getContext('2d'), {
+                type: 'line',
+                data: { labels: Array(20).fill(''), datasets: [{ data: Array(20).fill(-65), borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', fill: true, tension: 0.3, borderWidth: 2, pointRadius: 0 }] },
+                options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { ticks: { color: '#64748b', font: { size: 8 } }, min: -105, max: -30 } } }
+            });
+
+            chartSelectedDelivery = new Chart(document.getElementById('chartSelectedDelivery').getContext('2d'), {
+                type: 'line',
+                data: { labels: Array(20).fill(''), datasets: [{ data: Array(20).fill(99), borderColor: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.1)', fill: true, tension: 0.3, borderWidth: 2, pointRadius: 0 }] },
+                options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { ticks: { color: '#64748b', font: { size: 8 } }, min: 50, max: 100 } } }
+            });
+        }
+    </script>
+</body>
+</html>
